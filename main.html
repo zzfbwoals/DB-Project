@@ -70,7 +70,19 @@
         }
     
         .signup-button {
-            background-color: #00a8ff; /* 초록색 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            text-decoration: none; /* 밑줄 제거 */
+            background-color: #00a8ff;
+            color: white;
+            padding: 12px;
+            font-size: 16px;
+            border-radius: 5px;
+            flex: 1;
+            cursor: pointer;
+            height: 48px; /* 버튼 높이 고정해서 로그인 버튼이랑 딱 맞게 */
         }
     
         .login-button:hover {
@@ -131,7 +143,7 @@
                 <input type="password" placeholder="비밀번호를 입력하세요">
                 <div class="button-group">
                     <button class="login-button">로그인</button>
-                    <button class="signup-button">회원가입</button>
+                    <a href="signup.html" class="signup-button">회원가입</a>
                 </div>
             </div>
         </div>
