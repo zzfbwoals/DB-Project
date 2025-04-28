@@ -1,0 +1,75 @@
+USE dbproject;
+
+-- 1. User 테이블
+CREATE TABLE User (
+    UserID INT AUTO_INCREMENT PRIMARY KEY,
+    아이디 VARCHAR(50) NOT NULL UNIQUE,
+    비밀번호 VARCHAR(255) NOT NULL,
+    이름 VARCHAR(50) NOT NULL,
+    역할 ENUM('student', 'professor') NOT NULL,
+    학번 VARCHAR(20) UNIQUE,       -- 학생 전용 (nullable)
+    교수번호 VARCHAR(20) UNIQUE,   -- 교수 전용 (nullable)
+    학년 INT,                      -- 학생 전용 (nullable)
+    학과 VARCHAR(50) NOT NULL,
+    전학기학점 FLOAT               -- 학생 전용 (nullable)
+);
+
+-- 2. Course 테이블
+CREATE TABLE Course (
+    강의번호 VARCHAR(20) PRIMARY KEY,
+    강의명 VARCHAR(100) NOT NULL,
+    강의실 VARCHAR(50) NOT NULL,
+    교수UserID INT,
+    정원 INT NOT NULL,
+    분반 VARCHAR(10),
+    요일 ENUM('월', '화', '수', '목', '금') NOT NULL,
+    시작시간 TIME NOT NULL,
+    종료시간 TIME NOT NULL,
+    FOREIGN KEY (교수UserID) REFERENCES User(UserID)
+        ON UPDATE CASCADE
+        ON DELETE SET NULL
+);
+
+-- 3. Enroll 테이블 (수강 신청)
+CREATE TABLE Enroll (
+    신청번호 INT AUTO_INCREMENT PRIMARY KEY,
+    UserID INT NOT NULL,
+    강의번호 VARCHAR(20) NOT NULL,
+    FOREIGN KEY (UserID) REFERENCES User(UserID)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    FOREIGN KEY (강의번호) REFERENCES Course(강의번호)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    UNIQUE (UserID, 강의번호) -- 중복 수강 신청 방지
+);
+
+-- 4. ExtraEnroll 테이블 (빌넣 요청)
+CREATE TABLE ExtraEnroll (
+    요청번호 INT AUTO_INCREMENT PRIMARY KEY,
+    UserID INT NOT NULL,
+    강의번호 VARCHAR(20) NOT NULL,
+    사유 TEXT,
+    상태 ENUM('대기', '승인', '거절') DEFAULT '대기',
+    FOREIGN KEY (UserID) REFERENCES User(UserID)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    FOREIGN KEY (강의번호) REFERENCES Course(강의번호)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    UNIQUE (UserID, 강의번호) -- 중복 빌넣 요청 방지
+);
+
+-- 5. Cart 테이블 (장바구니)
+CREATE TABLE Cart (
+    장바구니번호 INT AUTO_INCREMENT PRIMARY KEY,
+    UserID INT NOT NULL,
+    강의번호 VARCHAR(20) NOT NULL,
+    FOREIGN KEY (UserID) REFERENCES User(UserID)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    FOREIGN KEY (강의번호) REFERENCES Course(강의번호)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    UNIQUE (UserID, 강의번호) -- 중복 장바구니 담기 방지
+);
