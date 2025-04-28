@@ -10,14 +10,27 @@ SELECT
     C.강의번호,
     C.강의명,
     C.강의실,
-    C.요일및시간,
+    CT.요일,
+    CT.시작교시,
+    CT.종료교시,
     C.학점,
     P.이름 AS 교수이름,
     PD.학과명 AS 교수학과
 FROM Enroll E
 JOIN User U ON E.사용자ID = U.사용자ID
 JOIN Course C ON E.강의번호 = C.강의번호
+JOIN CourseTime CT ON C.강의번호 = CT.강의번호
 JOIN User P ON C.담당교수ID = P.사용자ID
 LEFT JOIN Department D ON U.학과ID = D.학과ID
 LEFT JOIN Department PD ON P.학과ID = PD.학과ID
 WHERE U.역할 = 'student';
+
+/* 
+특정 학생의 시간표만 조회할 때
+SELECT *
+FROM StudentTimeTable
+WHERE 사용자ID = '20214045'
+ORDER BY 
+  FIELD(요일, '월', '화', '수', '목', '금'),
+  시작교시;
+ */

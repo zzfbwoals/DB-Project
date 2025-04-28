@@ -1,34 +1,37 @@
 -- 데이터베이스 선택
 USE dbproject;
 
--- 1. User 더미 데이터 (학생 1명, 교수 1명)
+INSERT INTO College (단과대학명) VALUES 
+('공과대학'), 
+('인문과학대학');
 
-INSERT INTO User (아이디, 비밀번호, 이름, 역할, 학번, 교수번호, 학년, 학과, 전학기학점)
-VALUES
-('student01', 'hashedpassword1', '김학생', 'student', '20214045', NULL, 3, '컴퓨터소프트웨어공학과', 3.8),
-('professor01', 'hashedpassword2', '이교수', 'professor', NULL, 'P12345', NULL, '컴퓨터소프트웨어공학과', NULL);
+INSERT INTO Department (학과명, 단과대학ID) VALUES 
+('컴퓨터소프트웨어공학과', 1), 
+('영어영문학과', 2);
 
--- 2. Course 더미 데이터 (강의 2개)
+INSERT INTO User (사용자ID, 아이디, 비밀번호, 이름, 학과ID, 학년, 전학기학점, 역할) VALUES
+('20214045', 'student01', 'hashedpassword1', '김학생', 1, 3, 3.8, 'student'),
+('P12345', 'professor01', 'hashedpassword2', '이교수', 1, NULL, NULL, 'professor');
 
-INSERT INTO Course (강의번호, 강의명, 강의실, 교수UserID, 정원, 분반, 요일, 시작시간, 종료시간)
-VALUES
-('CSE101', '데이터베이스', 'A201', 2, 30, '1', '월', '09:00:00', '10:15:00'),
-('CSE102', '운영체제', 'B301', 2, 40, '1', '수', '13:00:00', '14:15:00');
+INSERT INTO Course (강의번호, 강의명, 강의실, 담당교수ID, 정원, 영어강의여부, 이수구분, 영역, 학과ID, 학점, 현재인원) VALUES
+('10000', '데이터베이스', 'A201', 'P12345', 30, FALSE, '전공', '과학기술', 1, 3.0, 0),
+('10001', '운영체제', 'B301', 'P12345', 40, FALSE, '전공', '과학기술', 1, 3.0, 0);
 
--- 3. Enroll 더미 데이터 (학생 1명이 강의 1개 신청)
+-- 데이터베이스 과목
+INSERT INTO CourseTime (강의번호, 요일, 시작교시, 종료교시) VALUES
+('10000', '월', '7A', '8A'),
+('10000', '수', '2B', '3B');
 
-INSERT INTO Enroll (UserID, 강의번호)
-VALUES
-(1, 'CSE101');
+-- 운영체제 과목
+INSERT INTO CourseTime (강의번호, 요일, 시작교시, 종료교시) VALUES
+('10001', '화', '4A', '5A'),
+('10001', '목', '3B', '4B');
 
--- 4. ExtraEnroll 더미 데이터 (학생 1명이 빌넣 요청)
+INSERT INTO Enroll (사용자ID, 강의번호) VALUES
+('20214045', '10000');
 
-INSERT INTO ExtraEnroll (UserID, 강의번호, 사유, 상태)
-VALUES
-(1, 'CSE102', '수업을 꼭 듣고 싶습니다.', '대기');
+INSERT INTO ExtraEnroll (사용자ID, 강의번호, 사유, 상태) VALUES
+('20214045', '10001', '꼭 듣고 싶습니다.', '대기');
 
--- 5. Cart 더미 데이터 (학생 1명이 강의 1개 장바구니 담기)
-
-INSERT INTO Cart (UserID, 강의번호)
-VALUES
-(1, 'CSE102');UserID
+INSERT INTO Cart (사용자ID, 강의번호) VALUES
+('20214045', '10001');
