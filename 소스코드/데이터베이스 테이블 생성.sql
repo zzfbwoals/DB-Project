@@ -1,75 +1,98 @@
 USE dbproject;
 
--- 1. User 테이블
+-- 단과대학 테이블
+CREATE TABLE College (
+    단과대학ID INT AUTO_INCREMENT PRIMARY KEY,
+    단과대학명 VARCHAR(50) NOT NULL
+);
+
+-- 학과 테이블
+CREATE TABLE Department (
+    학과ID INT AUTO_INCREMENT PRIMARY KEY,
+    학과명 VARCHAR(50) NOT NULL,
+    단과대학ID INT,
+    FOREIGN KEY (단과대학ID) REFERENCES College(단과대학ID)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE
+);
+
+-- 사용자 테이블 (학생/교수)
 CREATE TABLE User (
-    UserID INT AUTO_INCREMENT PRIMARY KEY,
-    아이디 VARCHAR(50) NOT NULL UNIQUE,
+    사용자ID VARCHAR(20) PRIMARY KEY,
+    아이디 VARCHAR(50) UNIQUE NOT NULL,
     비밀번호 VARCHAR(255) NOT NULL,
     이름 VARCHAR(50) NOT NULL,
-    역할 ENUM('student', 'professor') NOT NULL,
-    학번 VARCHAR(20) UNIQUE,       -- 학생 전용 (nullable)
-    교수번호 VARCHAR(20) UNIQUE,   -- 교수 전용 (nullable)
-    학년 INT,                      -- 학생 전용 (nullable)
-    학과 VARCHAR(50) NOT NULL,
-    전학기학점 FLOAT               -- 학생 전용 (nullable)
+    학과ID INT,
+    학년 INT,
+    전학기학점 FLOAT,
+    역할 VARCHAR(20) NOT NULL,
+    FOREIGN KEY (학과ID) REFERENCES Department(학과ID)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE
 );
 
--- 2. Course 테이블
+-- 강의 테이블
 CREATE TABLE Course (
-    강의번호 VARCHAR(20) PRIMARY KEY,
+    강의번호 VARCHAR(5) PRIMARY KEY,
     강의명 VARCHAR(100) NOT NULL,
     강의실 VARCHAR(50) NOT NULL,
-    교수UserID INT,
+    담당교수ID VARCHAR(20),
     정원 INT NOT NULL,
-    분반 VARCHAR(10),
-    요일 ENUM('월', '화', '수', '목', '금') NOT NULL,
-    시작시간 TIME NOT NULL,
-    종료시간 TIME NOT NULL,
-    FOREIGN KEY (교수UserID) REFERENCES User(UserID)
-        ON UPDATE CASCADE
+    요일및시간 VARCHAR(100) NOT NULL,
+    영어강의여부 BOOLEAN DEFAULT FALSE,
+    이수구분 VARCHAR(20) NOT NULL,
+    영역 VARCHAR(20) NOT NULL,
+    학과ID INT,
+    학점 FLOAT NOT NULL,
+    현재인원 INT DEFAULT 0,
+    FOREIGN KEY (담당교수ID) REFERENCES User(사용자ID)
         ON DELETE SET NULL
+        ON UPDATE CASCADE,
+    FOREIGN KEY (학과ID) REFERENCES Department(학과ID)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE
 );
 
--- 3. Enroll 테이블 (수강 신청)
+-- 수강신청 테이블
 CREATE TABLE Enroll (
     신청번호 INT AUTO_INCREMENT PRIMARY KEY,
-    UserID INT NOT NULL,
-    강의번호 VARCHAR(20) NOT NULL,
-    FOREIGN KEY (UserID) REFERENCES User(UserID)
+    사용자ID VARCHAR(20),
+    강의번호 VARCHAR(5),
+    FOREIGN KEY (사용자ID) REFERENCES User(사용자ID)
         ON DELETE CASCADE
         ON UPDATE CASCADE,
     FOREIGN KEY (강의번호) REFERENCES Course(강의번호)
         ON DELETE CASCADE
         ON UPDATE CASCADE,
-    UNIQUE (UserID, 강의번호) -- 중복 수강 신청 방지
+    UNIQUE (사용자ID, 강의번호)
 );
 
--- 4. ExtraEnroll 테이블 (빌넣 요청)
+-- 빌넣요청 테이블
 CREATE TABLE ExtraEnroll (
     요청번호 INT AUTO_INCREMENT PRIMARY KEY,
-    UserID INT NOT NULL,
-    강의번호 VARCHAR(20) NOT NULL,
+    사용자ID VARCHAR(20),
+    강의번호 VARCHAR(5),
     사유 TEXT,
-    상태 ENUM('대기', '승인', '거절') DEFAULT '대기',
-    FOREIGN KEY (UserID) REFERENCES User(UserID)
+    상태 VARCHAR(10) DEFAULT '대기',
+    FOREIGN KEY (사용자ID) REFERENCES User(사용자ID)
         ON DELETE CASCADE
         ON UPDATE CASCADE,
     FOREIGN KEY (강의번호) REFERENCES Course(강의번호)
         ON DELETE CASCADE
         ON UPDATE CASCADE,
-    UNIQUE (UserID, 강의번호) -- 중복 빌넣 요청 방지
+    UNIQUE (사용자ID, 강의번호)
 );
 
--- 5. Cart 테이블 (장바구니)
+-- 장바구니 테이블
 CREATE TABLE Cart (
     장바구니번호 INT AUTO_INCREMENT PRIMARY KEY,
-    UserID INT NOT NULL,
-    강의번호 VARCHAR(20) NOT NULL,
-    FOREIGN KEY (UserID) REFERENCES User(UserID)
+    사용자ID VARCHAR(20),
+    강의번호 VARCHAR(5),
+    FOREIGN KEY (사용자ID) REFERENCES User(사용자ID)
         ON DELETE CASCADE
         ON UPDATE CASCADE,
     FOREIGN KEY (강의번호) REFERENCES Course(강의번호)
         ON DELETE CASCADE
         ON UPDATE CASCADE,
-    UNIQUE (UserID, 강의번호) -- 중복 장바구니 담기 방지
+    UNIQUE (사용자ID, 강의번호)
 );
