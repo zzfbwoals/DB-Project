@@ -1,4 +1,4 @@
-USE dbproject
+USE dbproject;
 
 -- 단과대학
 CREATE TABLE College (
