@@ -20,6 +20,9 @@ CREATE TABLE User (
     아이디 VARCHAR(50) UNIQUE NOT NULL,
     비밀번호 VARCHAR(255) NOT NULL,
     이름 VARCHAR(50) NOT NULL,
+    이메일 VARCHAR(100) UNIQUE NOT NULL, -- ✅ 이메일 추가
+    이메일인증여부 BOOLEAN DEFAULT 0,    -- ✅ 이메일 인증 여부 추가 (0: 미인증, 1: 인증)
+    이메일인증코드 VARCHAR(255),          -- ✅ 이메일 인증 코드 추가
     학과ID INT,
     학년 INT,
     전학기학점 FLOAT,
