@@ -1,3 +1,5 @@
+USE dbproject
+
 -- 단과대학
 CREATE TABLE College (
     단과대학ID INT AUTO_INCREMENT PRIMARY KEY,
