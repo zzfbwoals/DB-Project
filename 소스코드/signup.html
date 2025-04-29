@@ -1,102 +1,74 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>순천향대학교 수강신청 시스템 - 회원가입</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Malgun Gothic', sans-serif;
-        }
-
-        body {
-            background-color: #f5f5f5;
-        }
-
-        .section {
-            width: 400px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            margin-top: 50px;
-        }
-
-        .logo {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        .logo img {
-            width: 200px;
-        }
-
-        h3 {
-            font-size: 22px;
-            text-align: center;
-            margin-bottom: 20px;
-            color: #333;
-        }
-
-        .signup-form input {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 12px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-
-        .signup-button {
-            width: 100%;
-            padding: 15px;
-            font-size: 16px;
-            border: none;
-            border-radius: 5px;
-            background-color: #00a8ff;
-            color: white;
-            cursor: pointer;
-        }
-
-        .signup-button:hover {
-            background-color: #0090dd;
-        }
-
-        .back-link {
-            display: block;
-            margin-top: 20px;
-            text-align: center;
-            color: #00a8ff;
-            text-decoration: none;
-            font-size: 14px;
-        }
-
-        .back-link:hover {
-            text-decoration: underline;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>순천향대학교 수강신청 시스템 - 회원가입</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Malgun Gothic', sans-serif; }
+    body { background-color: #f5f5f5; }
+    .section { width: 400px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 50px; }
+    .logo { text-align: center; margin-bottom: 20px; }
+    .logo img { width: 200px; }
+    h3 { font-size: 22px; text-align: center; margin-bottom: 20px; color: #333; }
+    .signup-form input, .signup-form select { width: 100%; padding: 12px; margin-bottom: 12px; border: 1px solid #ddd; border-radius: 5px; }
+    .signup-button { width: 100%; padding: 15px; font-size: 16px; border: none; border-radius: 5px; background-color: #00a8ff; color: white; cursor: pointer; }
+    .signup-button:hover { background-color: #0090dd; }
+    .back-link { display: block; margin-top: 20px; text-align: center; color: #00a8ff; text-decoration: none; font-size: 14px; }
+    .back-link:hover { text-decoration: underline; }
+    .student-only { display: none; }
+  </style>
 </head>
 <body>
-    <div class="section">
-        <div class="logo">
-            <img src="https://blog.kakaocdn.net/dn/bx64Eo/btqEOZOpwoE/veAdLIDj4xKXMakWfvHRmk/img.jpg" alt="순천향대학교 로고">
-        </div>
-
-        <h3>회원가입</h3>
-
-        <form class="signup-form" action="signup_result.php" method="POST">
-            <input type="text" name="student_id" placeholder="학번" required>
-            <input type="text" name="name" placeholder="이름" required>
-            <input type="password" name="password" placeholder="비밀번호" required>
-            <input type="text" name="major" placeholder="전공" required>
-            <input type="email" name="email" placeholder="이메일" required>
-            <button type="submit" class="signup-button">회원가입 완료</button>
-        </form>
-
-        <a href="main.html" class="back-link">이미 계정이 있나요? 로그인</a>
+  <div class="section">
+    <div class="logo">
+      <img src="https://blog.kakaocdn.net/dn/bx64Eo/btqEOZOpwoE/veAdLIDj4xKXMakWfvHRmk/img.jpg" alt="순천향대학교 로고">
     </div>
+
+    <h3>회원가입</h3>
+
+    <form class="signup-form" action="signup_result.php" method="POST">
+      <input type="text" name="student_id" placeholder="학번" required>
+      <input type="text" name="name" placeholder="이름" required>
+      <input type="password" name="password" placeholder="비밀번호" required>
+      <input type="email" name="email" placeholder="이메일" required>
+
+      <select name="department_id" required>
+        <option value="">학과를 선택하세요</option>
+        <option value="101">컴퓨터공학과</option>
+        <option value="102">전자공학과</option>
+        <option value="103">경영학과</option>
+        <option value="104">간호학과</option>
+        <!-- 필요하면 추가 -->
+      </select>
+
+      <select name="role" id="role-select" required onchange="toggleStudentFields()">
+        <option value="">역할을 선택하세요</option>
+        <option value="student">학생</option>
+        <option value="professor">교수</option>
+      </select>
+
+      <div id="student-fields" class="student-only">
+        <input type="number" name="grade" placeholder="학년 (숫자)" min="1" max="5">
+        <input type="number" name="last_semester_gpa" step="0.01" placeholder="전학기 학점 (예: 4.3)" min="0" max="4.5">
+      </div>
+
+      <button type="submit" class="signup-button">회원가입 완료</button>
+    </form>
+
+    <a href="main.html" class="back-link">이미 계정이 있나요? 로그인</a>
+  </div>
+
+  <script>
+    function toggleStudentFields() {
+      const role = document.getElementById('role-select').value;
+      const studentFields = document.getElementById('student-fields');
+      if (role === 'student') {
+        studentFields.style.display = 'block';
+      } else {
+        studentFields.style.display = 'none';
+      }
+    }
+  </script>
 </body>
 </html>
