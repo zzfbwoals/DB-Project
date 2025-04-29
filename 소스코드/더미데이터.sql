@@ -27,7 +27,7 @@ INSERT INTO CourseTime (강의번호, 요일, 시작교시, 종료교시) VALUES
 ('10001', '화', '4A', '5A'),
 ('10001', '목', '3B', '4B');
 
-INSERT INTO Enroll (사용자ID, 강의번호) VALUES
+INSERT INTO Enroll (학번, 강의번호) VALUES
 ('20214045', '10000');
 
 INSERT INTO ExtraEnroll (사용자ID, 강의번호, 사유, 상태) VALUES
