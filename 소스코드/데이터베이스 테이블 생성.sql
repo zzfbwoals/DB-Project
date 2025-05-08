@@ -24,6 +24,7 @@ CREATE TABLE User (
     이메일 VARCHAR(100) UNIQUE NOT NULL,
     이메일인증여부 BOOLEAN DEFAULT 0,
     이메일인증코드 VARCHAR(255),
+    관리자승인여부 ENUM('대기', '승인', '거절') DEFAULT '대기',
     학과ID INT,
     학년 INT,
     전학기학점 FLOAT,
