@@ -38,7 +38,7 @@ CREATE TABLE User (
 CREATE TABLE Course (
     강의번호 VARCHAR(5) PRIMARY KEY,
     강의명 VARCHAR(100) NOT NULL,
-    강의실 VARCHAR(50) NOT NULL,
+    강의실 VARCHAR(50),
     담당교수 VARCHAR(20),
     정원 INT NOT NULL,
     이수구분 VARCHAR(20) NOT NULL,
@@ -60,9 +60,9 @@ CREATE TABLE CourseTime (
     시간ID INT AUTO_INCREMENT PRIMARY KEY,
     강의번호 VARCHAR(5),
     시간 INT,
-    요일 VARCHAR(5) NOT NULL,
-    시작교시 VARCHAR(5) NOT NULL,
-    종료교시 VARCHAR(5) NOT NULL,
+    요일 VARCHAR(5),
+    시작교시 VARCHAR(5),
+    종료교시 VARCHAR(5),
     FOREIGN KEY (강의번호) REFERENCES Course(강의번호)
         ON DELETE CASCADE
         ON UPDATE CASCADE
