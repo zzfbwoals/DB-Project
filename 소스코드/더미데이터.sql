@@ -1,7 +1,7 @@
 -- 데이터베이스 선택
 USE dbproject;
 
-INSERT INTO College (단과대학명) VALUES 
+INSERT INTO College (collegeName) VALUES 
 ('의과대학'), 
 ('자연과학대학'),
 ('인문사회과학대학'),
@@ -11,7 +11,7 @@ INSERT INTO College (단과대학명) VALUES
 ('의료과학대학'),
 ('SCH미디어랩스');
 
-INSERT INTO Department (학과명, 단과대학ID) VALUES 
+INSERT INTO Department (departmentName, collegeID) VALUES 
 ('의예과', 1), ('의학과', 1), ('간호학과', 1),
 ('화학과', 2), ('식품영양학과', 2), ('한경보건학과', 2), ('생명과학과', 2), ('스포츠과학과', 2), ('사회체육학과', 2), ('스포츠의학과', 2),
 ('유아교육과', 3), ('특수교육과', 3), ('청소년교육상담학과', 3), ('법학과', 3), ('행정학과', 3), ('경찰행정학과', 3), ('사회복지학과', 3),
@@ -23,7 +23,7 @@ INSERT INTO Department (학과명, 단과대학ID) VALUES
 
 
 -- 사용자
-INSERT INTO User (학번, 비밀번호, 이름, 이메일, 이메일인증여부, 이메일인증코드, 관리자승인여부, 학과ID, 학년, 전학기학점, 역할) VALUES
+INSERT INTO User (userID, userPassword, userName, userEmail, emailVerified, emailVerificationCode, adminApproval, departmentID, grade, lastSemesterCredits, userRole) VALUES
 ('20214045', 'hashedpassword1', '홍길동', 'student01@example.com', 1, NULL, '승인', 33, 3, 3.8, 'student'),
 ('20024001', 'hashedpassword2', '김수현', 'professor01@example.com', 1, NULL, '승인', 33, NULL, NULL, 'professor'),
 ('20024002', 'hashedpassword2', '김대영', 'professor02@example.com', 1, NULL, '승인', 33, NULL, NULL, 'professor'),
