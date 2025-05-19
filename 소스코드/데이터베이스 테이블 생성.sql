@@ -41,9 +41,9 @@ CREATE TABLE Course (
     classroom VARCHAR(50),           -- 강의실
     professorID VARCHAR(20),         -- 담당교수
     capacity INT NOT NULL,           -- 정원
-    creditType VARCHAR(20) NOT NULL, -- 이수구분
-    area VARCHAR(20) NOT NULL,       -- 영역
-    grade VARCHAR(10) NOT NULL,      -- 학년
+    creditType VARCHAR(20), 		 -- 이수구분
+    area VARCHAR(20),       		 -- 영역
+    grade VARCHAR(10),               -- 학년
     departmentID INT,                -- 학과
     credits FLOAT NOT NULL,          -- 학점
     currentEnrollment INT DEFAULT 0, -- 현재 수강신청 인원
