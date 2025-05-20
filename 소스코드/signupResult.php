@@ -21,7 +21,23 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $lastSemesterCredits = $_POST['lastSemesterCredits'];
     }
 
-    $stmt = $conn->prepare("INSERT INTO User (userID, userPassword, userName, userEmail, emailVerified, emailVerificationCode, adminApproval, departmentID, grade, lastSemesterCredits, userRole) VALUES (?, ?, ?, ?, 0, NULL, '대기', ?, ?, ?, ?)");
+    // 학번 중복 여부 확인
+    $checkStmt = $conn->prepare("SELECT COUNT(*) FROM User WHERE userID = ?");
+    $checkStmt->bind_param("s", $userID);
+    $checkStmt->execute();
+    $checkStmt->bind_result($count);
+    $checkStmt->fetch();
+    $checkStmt->close();
+
+    if ($count > 0) {
+        echo "<script>alert('이미 존재하는 학번입니다. 다른 학번을 사용해주세요.'); history.back();</script>";
+        $conn->close();
+        exit;
+    }
+
+    // 중복 없을 경우 회원가입 진행
+    $stmt = $conn->prepare("INSERT INTO User (userID, userPassword, userName, userEmail, emailVerified, emailVerificationCode, adminApproval, departmentID, grade, lastSemesterCredits, userRole)
+                            VALUES (?, ?, ?, ?, 0, NULL, '대기', ?, ?, ?, ?)");
     $stmt->bind_param("ssssiids", $userID, $userPassword, $userName, $userEmail, $departmentID, $grade, $lastSemesterCredits, $userRole);
 
     if ($stmt->execute()) {
