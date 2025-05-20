@@ -38,10 +38,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
             else if ($row['userRole'] === 'professor') 
                 header("Location: mainPro.php");
             else if ($row['userRole'] === 'admin') 
-            {
-                echo "<script>alert('관리자님 환영합니다.'); window.location.href = 'mainAdmin.php';</script>";
-                exit();
-            }
+                header("Location: mainAdmin.php");
             else 
             {
                 echo "<script>alert('알 수 없는 사용자 유형입니다.'); history.back();</script>";
