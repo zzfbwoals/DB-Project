@@ -1,46 +1,75 @@
 <?php
 session_start();
 
+// DB 연결
 $conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
-if ($conn->connect_error) {
-    die("DB 연결 실패: " . $conn->connect_error);
-}
+if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
+if ($_SERVER["REQUEST_METHOD"] === "POST") 
+{
     $userID = $_POST['userID'];
     $userPassword = $_POST['userPassword'];
 
-    // 프로시저 호출
-    $stmt = $conn->prepare("CALL loginUser(?, ?, @success)");
-    $stmt->bind_param("ss", $userID, $userPassword);
+    // 사용자 정보 조회
+    $stmt = $conn->prepare("SELECT userPassword, userRole, emailVerified, adminApproval FROM User WHERE userID = ?");
+    $stmt->bind_param("s", $userID);
     $stmt->execute();
-    $stmt->close();
+    $result = $stmt->get_result();
 
-    // 결과 가져오기
-    $result = $conn->query("SELECT @success AS success");
-    $row = $result->fetch_assoc();
+    if ($row = $result->fetch_assoc()) 
+    {
+        // 비밀번호 해시 확인
+        if (password_verify($userPassword, $row['userPassword'])) 
+        {
+            // 이메일 인증 확인
+            if ($row['emailVerified'] != 1) 
+            {
+                echo "<script>alert('이메일 인증이 완료되지 않았습니다. 인증 후 다시 로그인해주세요.'); history.back();</script>";
+                exit();
+            }
 
-    if ($row['success'] == 1) {
-        // 로그인 성공 후 역할(userRole) 가져오기
-        $stmt2 = $conn->prepare("SELECT userRole FROM User WHERE userID = ?");
-        $stmt2->bind_param("s", $userID);
-        $stmt2->execute();
-        $res = $stmt2->get_result();
-        $user = $res->fetch_assoc();
-        $_SESSION['userID'] = $userID;
-        $_SESSION['userRole'] = $user['userRole'];
+            // 관리자 승인 확인
+            if ($row['adminApproval'] !== '승인') 
+            {
+                echo "<script>alert('관리자의 승인이 아직 완료되지 않았습니다.'); history.back();</script>";
+                exit();
+            }
 
-        if ($user['userRole'] === 'student') { // 학생인 경우
-            header("Location: mainStu.php");
-        } else if ($user['userRole'] === 'professor') { // 교수인 경우
-            header("Location: mainPro.php");
-        } else { // 학생도 교수도 아닌 경우
-            echo "<script>alert('알 수 없는 사용자 유형입니다.'); history.back();</script>";
+            // 로그인 성공: 세션 설정 및 페이지 이동
+            $_SESSION['userID'] = $userID;
+            $_SESSION['userRole'] = $row['userRole'];
+
+            if ($row['userRole'] === 'student') 
+                header("Location: mainStu.php");
+            else if ($row['userRole'] === 'professor') 
+                header("Location: mainPro.php");
+            else if ($row['userRole'] === 'admin') 
+            {
+                echo "<script>alert('관리자님 환영합니다.'); window.location.href = 'mainAdmin.php';</script>";
+                exit();
+            }
+            else 
+            {
+                echo "<script>alert('알 수 없는 사용자 유형입니다.'); history.back();</script>";
+                exit();
+            }
+        } 
+        else 
+        {
+            echo "<script>alert('비밀번호가 일치하지 않습니다.'); history.back();</script>";
+            exit();
         }
-    } else {
-        echo "<script>alert('학번 또는 비밀번호가 틀렸습니다.'); history.back();</script>";
+    } 
+    else 
+    {
+        echo "<script>alert('존재하지 않는 사용자입니다.'); history.back();</script>";
+        exit();
     }
+
+    $stmt->close();
 }
+
+$conn->close();
 ?>
 
 
@@ -51,18 +80,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>순천향대학교 수강신청 시스템</title>
     <style>
-        * {
+        * 
+        {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
             font-family: 'Malgun Gothic', sans-serif;
         }
 
-        body {
+        body 
+        {
             background-color: #f5f5f5;
         }
 
-        .section {
+        .section 
+        {
             width: 400px;
             margin: 0 auto;
             background-color: white;
@@ -72,23 +104,27 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             margin-top: 50px;
         }
 
-        .logo {
+        .logo 
+        {
             text-align: center;
             margin-bottom: 20px;
         }
 
-        .logo img {
+        .logo img 
+        {
             width: 200px;
         }
 
-        h3 {
+        h3 
+        {
             font-size: 22px;
             text-align: center;
             margin-bottom: 20px;
             color: #333;
         }
 
-        .loginForm input {
+        .loginForm input 
+        {
             width: 100%;
             padding: 12px;
             margin-bottom: 12px;
@@ -96,7 +132,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             border-radius: 5px;
         }
 
-        .loginButton {
+        .loginButton 
+        {
             width: 100%;
             padding: 15px;
             font-size: 16px;
@@ -108,11 +145,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             margin-top: 10px;
         }
 
-        .loginButton:hover {
+        .loginButton:hover 
+        {
             background-color: #0090dd;
         }
 
-        .linkToSign {
+        .linkToSign 
+        {
             display: block;
             margin-top: 20px;
             text-align: center;
@@ -121,22 +160,26 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             font-size: 14px;
         }
 
-        .linkToSign:hover {
+        .linkToSign:hover 
+        {
             text-decoration: underline;
         }
 
-        .eventSection {
+        .eventSection 
+        {
             margin-top: 40px;
         }
 
-        .eventCard {
+        .eventCard 
+        {
             background-color: #f9f9f9;
             border-radius: 5px;
             padding: 15px;
             margin-bottom: 20px;
         }
 
-        .eventCard .tag {
+        .eventCard .tag 
+        {
             display: inline-block;
             padding: 3px 8px;
             background-color: #007bff;
@@ -146,17 +189,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             margin-right: 5px;
         }
 
-        .eventCard .tag.new {
+        .eventCard .tag.new 
+        {
             background-color: #28a745;
         }
 
-        .eventCard h4 {
+        .eventCard h4 
+        {
             font-size: 14px;
             margin: 10px 0;
             color: #333;
         }
 
-        .eventCard .date, .eventCard .time {
+        .eventCard .date, .eventCard .time 
+        {
             font-size: 12px;
             color: #666;
             margin-bottom: 5px;

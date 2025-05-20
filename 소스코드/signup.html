@@ -11,12 +11,12 @@
     .logo { text-align: center; margin-bottom: 20px; }
     .logo img { width: 200px; }
     h3 { font-size: 22px; text-align: center; margin-bottom: 20px; color: #333; }
-    .signup-form input, .signup-form select { width: 100%; padding: 12px; margin-bottom: 12px; border: 1px solid #ddd; border-radius: 5px; }
-    .signup-button { width: 100%; padding: 15px; font-size: 16px; border: none; border-radius: 5px; background-color: #00a8ff; color: white; cursor: pointer; }
-    .signup-button:hover { background-color: #0090dd; }
-    .back-link { display: block; margin-top: 20px; text-align: center; color: #00a8ff; text-decoration: none; font-size: 14px; }
-    .back-link:hover { text-decoration: underline; }
-    .student-only { display: none; }
+    .signupForm input, .signupForm select { width: 100%; padding: 12px; margin-bottom: 12px; border: 1px solid #ddd; border-radius: 5px; }
+    .signupButton { width: 100%; padding: 15px; font-size: 16px; border: none; border-radius: 5px; background-color: #00a8ff; color: white; cursor: pointer; }
+    .signupButton:hover { background-color: #0090dd; }
+    .backLink { display: block; margin-top: 20px; text-align: center; color: #00a8ff; text-decoration: none; font-size: 14px; }
+    .backLink:hover { text-decoration: underline; }
+    .studentOnly { display: none; }
   </style>
 </head>
 <body>
@@ -25,13 +25,13 @@
       <img src="https://blog.kakaocdn.net/dn/bx64Eo/btqEOZOpwoE/veAdLIDj4xKXMakWfvHRmk/img.jpg" alt="순천향대학교 로고">
     </div>
 
-    <form class="signup-form" action="signup_result.php" method="POST">
-      <input type="text" name="student_id" placeholder="학번" required>
-      <input type="text" name="name" placeholder="이름" required>
-      <input type="password" name="password" placeholder="비밀번호" required>
-      <input type="email" name="email" placeholder="이메일" required>
+    <form class="signupForm" action="signupResult.php" method="POST">
+      <input type="text" name="userID" placeholder="학번" required>
+      <input type="text" name="userName" placeholder="이름" required>
+      <input type="password" name="userPassword" placeholder="비밀번호" required>
+      <input type="email" name="userEmail" placeholder="이메일" required>
 
-      <select name="department_id" required>
+      <select name="departmentID" required>
         <option value="">학과를 선택하세요</option>
 
         <optgroup label="의과대학">
@@ -116,27 +116,27 @@
         </optgroup>
       </select>
 
-      <select name="role" id="role-select" required onchange="toggleStudentFields()">
+      <select name="userRole" id="roleSelect" required onchange="toggleStudentFields()">
         <option value="">역할을 선택하세요</option>
         <option value="student">학생</option>
         <option value="professor">교수</option>
       </select>
 
-      <div id="student-fields" class="student-only">
+      <div id="studentfields" class="studentOnly">
         <input type="number" name="grade" placeholder="학년 (숫자)" min="1" max="5">
-        <input type="number" name="last_semester_gpa" step="0.01" placeholder="전학기 학점 (예: 4.3)" min="0" max="4.5">
+        <input type="number" name="lastSemesterCredits" step="0.01" placeholder="전학기 학점 (예: 4.3)" min="0" max="4.5">
       </div>
 
-      <button type="submit" class="signup-button">회원가입 완료</button>
+      <button type="submit" class="signupButton">회원가입 완료</button>
     </form>
 
-    <a href="login.php" class="back-link">이미 계정이 있나요? 로그인</a>
+    <a href="login.php" class="backLink">이미 계정이 있나요? 로그인</a>
   </div>
 
   <script>
     function toggleStudentFields() {
-      const role = document.getElementById('role-select').value;
-      const studentFields = document.getElementById('student-fields');
+      const role = document.getElementById('roleSelect').value;
+      const studentFields = document.getElementById('studentfields');
       if (role === 'student') {
         studentFields.style.display = 'block';
       } else {
