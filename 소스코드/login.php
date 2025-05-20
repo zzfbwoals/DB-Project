@@ -1,3 +1,69 @@
+<?php
+session_start();
+
+// DB 연결
+$conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
+if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
+
+if ($_SERVER["REQUEST_METHOD"] === "POST") 
+{
+    $userID = $_POST['userID'];
+    $userPassword = $_POST['userPassword'];
+
+    // 사용자 정보 조회
+    $stmt = $conn->prepare("SELECT userPassword, userRole, adminApproval FROM User WHERE userID = ?");
+    $stmt->bind_param("s", $userID);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($row = $result->fetch_assoc()) 
+    {
+        // 비밀번호 해시 확인
+        if (password_verify($userPassword, $row['userPassword'])) 
+        {
+
+            // 관리자 승인 확인
+            if ($row['adminApproval'] !== '승인') 
+            {
+                echo "<script>alert('관리자의 승인이 아직 완료되지 않았습니다.'); history.back();</script>";
+                exit();
+            }
+
+            // 로그인 성공: 세션 설정 및 페이지 이동
+            $_SESSION['userID'] = $userID;
+            $_SESSION['userRole'] = $row['userRole'];
+
+            if ($row['userRole'] === 'student') 
+                header("Location: mainStu.php");
+            else if ($row['userRole'] === 'professor') 
+                header("Location: mainPro.php");
+            else if ($row['userRole'] === 'admin') 
+                header("Location: mainAdmin.php");
+            else 
+            {
+                echo "<script>alert('알 수 없는 사용자 유형입니다.'); history.back();</script>";
+                exit();
+            }
+        } 
+        else 
+        {
+            echo "<script>alert('비밀번호가 일치하지 않습니다.'); history.back();</script>";
+            exit();
+        }
+    } 
+    else 
+    {
+        echo "<script>alert('존재하지 않는 사용자입니다.'); history.back();</script>";
+        exit();
+    }
+
+    $stmt->close();
+}
+
+$conn->close();
+?>
+
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -5,18 +71,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>순천향대학교 수강신청 시스템</title>
     <style>
-        * {
+        * 
+        {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
             font-family: 'Malgun Gothic', sans-serif;
         }
 
-        body {
+        body 
+        {
             background-color: #f5f5f5;
         }
 
-        .section {
+        .section 
+        {
             width: 400px;
             margin: 0 auto;
             background-color: white;
@@ -26,23 +95,27 @@
             margin-top: 50px;
         }
 
-        .logo {
+        .logo 
+        {
             text-align: center;
             margin-bottom: 20px;
         }
 
-        .logo img {
+        .logo img 
+        {
             width: 200px;
         }
 
-        h3 {
+        h3 
+        {
             font-size: 22px;
             text-align: center;
             margin-bottom: 20px;
             color: #333;
         }
 
-        .login-form input {
+        .loginForm input 
+        {
             width: 100%;
             padding: 12px;
             margin-bottom: 12px;
@@ -50,7 +123,8 @@
             border-radius: 5px;
         }
 
-        .login-button {
+        .loginButton 
+        {
             width: 100%;
             padding: 15px;
             font-size: 16px;
@@ -62,11 +136,13 @@
             margin-top: 10px;
         }
 
-        .login-button:hover {
+        .loginButton:hover 
+        {
             background-color: #0090dd;
         }
 
-        .link-to-signup {
+        .linkToSign 
+        {
             display: block;
             margin-top: 20px;
             text-align: center;
@@ -75,22 +151,26 @@
             font-size: 14px;
         }
 
-        .link-to-signup:hover {
+        .linkToSign:hover 
+        {
             text-decoration: underline;
         }
 
-        .event-section {
+        .eventSection 
+        {
             margin-top: 40px;
         }
 
-        .event-card {
+        .eventCard 
+        {
             background-color: #f9f9f9;
             border-radius: 5px;
             padding: 15px;
             margin-bottom: 20px;
         }
 
-        .event-card .tag {
+        .eventCard .tag 
+        {
             display: inline-block;
             padding: 3px 8px;
             background-color: #007bff;
@@ -100,17 +180,20 @@
             margin-right: 5px;
         }
 
-        .event-card .tag.new {
+        .eventCard .tag.new 
+        {
             background-color: #28a745;
         }
 
-        .event-card h4 {
+        .eventCard h4 
+        {
             font-size: 14px;
             margin: 10px 0;
             color: #333;
         }
 
-        .event-card .date, .event-card .time {
+        .eventCard .date, .eventCard .time 
+        {
             font-size: 12px;
             color: #666;
             margin-bottom: 5px;
@@ -120,27 +203,24 @@
 <body>
 
     <div class="section">
-        <div class="login-section">
+        <div class="loginSection">
             <div class="logo">
                 <img src="https://blog.kakaocdn.net/dn/bx64Eo/btqEOZOpwoE/veAdLIDj4xKXMakWfvHRmk/img.jpg" alt="순천향대학교 로고">
             </div>
 
-            <h3>수강신청 로그인</h3>
-
-            <div class="login-form">
-                <form action="login.php" method="POST">
-                    <input type="text" name="student_id" placeholder="학번을 입력하세요" required>
-                    <input type="password" name="password" placeholder="비밀번호를 입력하세요" required>
-                    <button type="submit" class="login-button">로그인</button>
+            <div class="loginForm">
+                <form action="" method="POST">
+                    <input type="text" name="userID" placeholder="학번을 입력하세요" required>
+                    <input type="password" name="userPassword" placeholder="비밀번호를 입력하세요" required>
+                    <button type="submit" class="loginButton">로그인</button>
                 </form>
-                <a href="signup.html" class="link-to-signup">아직 계정이 없으신가요? 회원가입</a>
+                <a href="signup.html" class="linkToSign">아직 계정이 없으신가요? 회원가입</a>
             </div>
         </div>
 
-        <div class="event-section">
-            <h3>수강신청 일정</h3>
+        <div class="eventSection">
 
-            <div class="event-card">
+            <div class="eventCard">
                 <span class="tag">재학생</span>
                 <span class="tag new">신청</span>
                 <h4>2025학년도 1학기 일반전공(4,5학기) 과목 기간</h4>
@@ -148,7 +228,7 @@
                 <p class="time">시간 : 10:00:00 ~ 15:59:59</p>
             </div>
 
-            <div class="event-card">
+            <div class="eventCard">
                 <span class="tag">재학</span>
                 <span class="tag new">전체</span>
                 <h4>2025학년도 1학기 수강신청(4,5학기) 기간</h4>
@@ -156,7 +236,7 @@
                 <p class="time">시간 : 10:00:00 ~ 23:59:59</p>
             </div>
 
-            <div class="event-card">
+            <div class="eventCard">
                 <span class="tag">재학</span>
                 <span class="tag new">전체</span>
                 <h4>2025학년도 1학기 수강신청(학부, 신입생 제외) 기간</h4>
@@ -164,7 +244,7 @@
                 <p class="time">시간 : 10:00:00 ~ 23:59:59</p>
             </div>
 
-            <div class="event-card">
+            <div class="eventCard">
                 <span class="tag">재학</span>
                 <span class="tag new">전체</span>
                 <h4>2025학년도 1학기 수강신청(신편입) 기간</h4>

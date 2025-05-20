@@ -21,9 +21,6 @@ CREATE TABLE User (
     userID VARCHAR(20) PRIMARY KEY,         -- 학번(아이디)
     userPassword VARCHAR(255) NOT NULL,     -- 비밀번호
     userName VARCHAR(50) NOT NULL,          -- 이름
-    userEmail VARCHAR(100) UNIQUE NOT NULL, -- 이메일
-    emailVerified BOOLEAN DEFAULT 0,        -- 이메일 인증 여부
-    emailVerificationCode VARCHAR(255),     -- 이메일 인증 코드
     adminApproval ENUM('대기', '승인', '거절') DEFAULT '대기', -- 관리자 승인 상태
     departmentID INT,                       -- 학과 ID
     grade INT,                              -- 학년
