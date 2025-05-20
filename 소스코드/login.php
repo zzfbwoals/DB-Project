@@ -208,6 +208,8 @@ $conn->close();
                 <img src="https://blog.kakaocdn.net/dn/bx64Eo/btqEOZOpwoE/veAdLIDj4xKXMakWfvHRmk/img.jpg" alt="순천향대학교 로고">
             </div>
 
+            <h3>수강신청 로그인</h3>
+
             <div class="loginForm">
                 <form action="" method="POST">
                     <input type="text" name="userID" placeholder="학번을 입력하세요" required>
@@ -220,35 +222,54 @@ $conn->close();
 
         <div class="eventSection">
 
+            <h3>수강신청 일정</h3>
+
             <div class="eventCard">
-                <span class="tag">재학생</span>
-                <span class="tag new">신청</span>
-                <h4>2025학년도 1학기 일반전공(4,5학기) 과목 기간</h4>
+                <span class="tag">과목확인</span>
+                <span class="tag new">전체</span>
+                <h4>2025학년도 1학기 예비수강신청 기간</h4>
                 <p class="date">날짜 : 2025.02.10(월) ~ 2025.02.14(금)</p>
                 <p class="time">시간 : 10:00:00 ~ 15:59:59</p>
             </div>
 
             <div class="eventCard">
-                <span class="tag">재학</span>
-                <span class="tag new">전체</span>
-                <h4>2025학년도 1학기 수강신청(4,5학기) 기간</h4>
+                <span class="tag">1차</span>
+                <span class="tag new">4학년</span>
+                <h4>2025학년도 1학기 수강신청(4학년) 기간</h4>
                 <p class="date">날짜 : 2025.02.17(월)</p>
                 <p class="time">시간 : 10:00:00 ~ 23:59:59</p>
             </div>
 
             <div class="eventCard">
-                <span class="tag">재학</span>
-                <span class="tag new">전체</span>
-                <h4>2025학년도 1학기 수강신청(학부, 신입생 제외) 기간</h4>
+                <span class="tag">1차</span>
+                <span class="tag new">3학년</span>
+                <h4>2025학년도 1학기 수강신청(3학년) 기간</h4>
                 <p class="date">날짜 : 2025.02.18(화)</p>
                 <p class="time">시간 : 10:00:00 ~ 23:59:59</p>
             </div>
 
             <div class="eventCard">
-                <span class="tag">재학</span>
-                <span class="tag new">전체</span>
-                <h4>2025학년도 1학기 수강신청(신편입) 기간</h4>
+                <span class="tag">1차</span>
+                <span class="tag new">2학년</span>
+                <h4>2025학년도 1학기 수강신청(2학년) 기간</h4>
                 <p class="date">날짜 : 2025.02.19(수)</p>
+                <p class="time">시간 : 10:00:00 ~ 23:59:59</p>
+            </div>
+
+            <div class="eventCard">
+                <span class="tag">1차</span>
+                <span class="tag new">1학년</span>
+                <h4>2025학년도 1학기 수강신청(신편입) 기간</h4>
+                <p class="date">날짜 : 2025.02.20(목)</p>
+                <p class="time">시간 : 10:00:00 ~ 23:59:59</p>
+            </div>
+
+            <div class="eventCard">
+                <span class="tag">1차</span>
+                <span class="tag new">전체</span>
+                <h4>2025학년도 1학기 수강신청(전체) 기간</h4>
+                <p class="date">날짜 : 2025.02.21(금)</p>
+                <p class="time">시간 : 10:00:00 ~ 23:59:59</p>
             </div>
         </div>
     </div>

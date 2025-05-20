@@ -208,11 +208,11 @@ $result = $conn->query($sql);
         <?php if ($result->num_rows > 0) { ?>
             <table>
                 <tr>
-                    <th>아이디</th>
+                    <th>학번</th>
                     <th>이름</th>
                     <th>역할</th>
                     <th>학년</th>
-                    <th>승인/거절</th>
+                    <th>회원가입 승인/거절</th>
                 </tr>
 
                 <?php while ($row = $result->fetch_assoc()) { ?>
