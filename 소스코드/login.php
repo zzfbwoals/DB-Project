@@ -1,3 +1,41 @@
+<?php
+session_start();
+
+// DB 연결 정보 설정
+$conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
+if ($conn->connect_error) {
+    die("DB 연결 실패: " . $conn->connect_error);
+}
+
+// 로그인 처리
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    $student_id = $_POST['student_id'];
+    $password = $_POST['password'];
+
+    $stmt = $conn->prepare("SELECT userRole FROM User WHERE userID = ? AND userPassword = ?");
+    $stmt->bind_param("ss", $student_id, $password);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($row = $result->fetch_assoc()) {
+        $_SESSION['userID'] = $student_id;
+        $_SESSION['userRole'] = $row['userRole'];
+
+        if ($row['userRole'] === 'student') {
+            header("Location: mainStu.php");
+            exit();
+        } else if ($row['userRole'] === 'professor') {
+            header("Location: mainPro.php");
+            exit();
+        } else {
+            echo "<script>alert('알 수 없는 사용자 유형입니다.'); history.back();</script>";
+        }
+    } else {
+        echo "<script>alert('학번 또는 비밀번호가 올바르지 않습니다.'); history.back();</script>";
+    }
+}
+?>
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -126,7 +164,7 @@
             </div>
 
             <div class="login-form">
-                <form action="login.php" method="POST">
+                <form action="" method="POST">
                     <input type="text" name="student_id" placeholder="학번을 입력하세요" required>
                     <input type="password" name="password" placeholder="비밀번호를 입력하세요" required>
                     <button type="submit" class="login-button">로그인</button>
