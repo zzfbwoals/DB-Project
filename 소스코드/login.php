@@ -11,7 +11,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
     $userPassword = $_POST['userPassword'];
 
     // 사용자 정보 조회
-    $stmt = $conn->prepare("SELECT userPassword, userRole, emailVerified, adminApproval FROM User WHERE userID = ?");
+    $stmt = $conn->prepare("SELECT userPassword, userRole, adminApproval FROM User WHERE userID = ?");
     $stmt->bind_param("s", $userID);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -21,12 +21,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
         // 비밀번호 해시 확인
         if (password_verify($userPassword, $row['userPassword'])) 
         {
-            // 이메일 인증 확인
-            if ($row['emailVerified'] != 1) 
-            {
-                echo "<script>alert('이메일 인증이 완료되지 않았습니다. 인증 후 다시 로그인해주세요.'); history.back();</script>";
-                exit();
-            }
 
             // 관리자 승인 확인
             if ($row['adminApproval'] !== '승인') 

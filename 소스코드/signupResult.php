@@ -36,9 +36,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     }
 
     // 중복 없을 경우 회원가입 진행
-    $stmt = $conn->prepare("INSERT INTO User (userID, userPassword, userName, userEmail, emailVerified, emailVerificationCode, adminApproval, departmentID, grade, lastSemesterCredits, userRole)
-                            VALUES (?, ?, ?, ?, 0, NULL, '대기', ?, ?, ?, ?)");
-    $stmt->bind_param("ssssiids", $userID, $userPassword, $userName, $userEmail, $departmentID, $grade, $lastSemesterCredits, $userRole);
+    $stmt = $conn->prepare("INSERT INTO User (userID, userPassword, userName, adminApproval, departmentID, grade, lastSemesterCredits, userRole)
+                            VALUES (?, ?, ?, '대기', ?, ?, ?, ?)");
+    $stmt->bind_param("ssssiids", $userID, $userPassword, $userName, $departmentID, $grade, $lastSemesterCredits, $userRole);
 
     if ($stmt->execute()) {
         echo "<script>alert('회원가입이 완료되었습니다. 이메일 인증 및 관리자 승인 후 로그인 가능.'); location.href='login.php';</script>";
