@@ -1,20 +1,22 @@
 <?php
 session_start();
 
-// Check if user is logged in and is a student
+// 사용자가 로그인되어 있고 학생인지 확인
 if (!isset($_SESSION["userID"]) || $_SESSION["userRole"] !== 'student')
 {
+    // 로그인 페이지로 리다이렉트
     header("Location: login.php");
     exit();
 }
 
-// Database connection
+// DB 연결
 $conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
 if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
 
-// Get student information
+// 학생 정보 가져오기
 $studentID = $_SESSION["userID"];
-$studentQuery = "SELECT u.*, d.departmentName, c.collegeName 
+$studentQuery = "SELECT u.userID, u.userName, u.grade, u.lastSemesterCredits, u.userRole, 
+                        u.departmentID, d.departmentName, c.collegeName 
                 FROM User u 
                 LEFT JOIN Department d ON u.departmentID = d.departmentID
                 LEFT JOIN College c ON d.collegeID = c.collegeID
@@ -27,7 +29,7 @@ $studentResult = $stmt->get_result();
 $studentInfo = $studentResult->fetch_assoc();
 $stmt->close();
 
-// Get enrolled courses
+// 수강신청 내역 가져오기
 $enrolledQuery = "SELECT e.*, c.courseName, c.credits, u.userName as professor, ct.dayOfWeek, ct.startPeriod, ct.endPeriod, c.creditType
                 FROM Enroll e
                 JOIN Course c ON e.courseID = c.courseID
@@ -41,18 +43,18 @@ $stmt->execute();
 $enrolledCourses = $stmt->get_result();
 $stmt->close();
 
-// Calculate total credits
+// 총 학점 계산
 $totalCredits = 0;
 $totalCourses = 0;
-$timeTable = array(); // To store timetable data
+$timeTable = array(); // 시간표 데이터를 저장하기 위한 배열
 
 if ($enrolledCourses->num_rows > 0) {
     $totalCourses = $enrolledCourses->num_rows;
     
     while ($course = $enrolledCourses->fetch_assoc()) {
         $totalCredits += $course['credits'];
-        
-        // Store course data for timetable
+
+        // 시간표 데이터를 저장
         if (!empty($course['dayOfWeek']) && !empty($course['startPeriod']) && !empty($course['endPeriod'])) {
             $day = $course['dayOfWeek'];
             $start = intval($course['startPeriod']);
@@ -67,7 +69,7 @@ if ($enrolledCourses->num_rows > 0) {
         }
     }
     
-    // Re-execute query to get the results again
+    // 쿼리 결과를 다시 얻기 위해 쿼리를 재실행
     $stmt = $conn->prepare($enrolledQuery);
     $stmt->bind_param("s", $studentID);
     $stmt->execute();
@@ -75,20 +77,20 @@ if ($enrolledCourses->num_rows > 0) {
     $stmt->close();
 }
 
-// Maximum credits allowed per semester
-$maxCredits = 19;
+// 한 학기 최대 신청 가능 학점 - lastSemesterCredits에 따라 다르게 설정
+$maxCredits = ($studentInfo['lastSemesterCredits'] >= 3.0) ? 19 : 18;
 
-// Get all colleges for the search dropdown
+// 검색 드롭다운을 위한 모든 단과대학 조회
 $collegesQuery = "SELECT * FROM College ORDER BY collegeName";
 $colleges = $conn->query($collegesQuery);
 
-// Get all departments for the search dropdown
+// 검색 드롭다운을 위한 모든 학과 조회
 $departmentsQuery = "SELECT d.*, c.collegeName FROM Department d 
                      JOIN College c ON d.collegeID = c.collegeID 
                      ORDER BY c.collegeName, d.departmentName";
 $departments = $conn->query($departmentsQuery);
 
-// Days of the week mapping
+// 요일 매핑
 $daysKorean = [
     'Mon' => '월',
     'Tue' => '화',
@@ -107,8 +109,10 @@ $daysEnglish = [
     '토' => 'Sat'
 ];
 
-// Handle course search (if form submitted)
-$searchResults = [];
+// 검색 결과 초기화
+$searchResults = null;
+
+// 검색 기능
 if (isset($_GET['search']) && $_GET['search'] == '1') {
     $searchQuery = "SELECT c.*, u.userName as professor, d.departmentName, ct.dayOfWeek, ct.startPeriod, ct.endPeriod 
                    FROM Course c 
@@ -120,28 +124,28 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
     $params = [];
     $types = "";
     
-    // Filter by course type (creditType)
+    // 강의구분(교과구분)로 필터 (creditType)
     if (!empty($_GET['courseType'])) {
         $searchQuery .= " AND c.creditType = ?";
         $params[] = $_GET['courseType'];
         $types .= "s";
     }
     
-    // Filter by college
+    // 단과대학(College)로 필터
     if (!empty($_GET['college'])) {
         $searchQuery .= " AND d.collegeID = ?";
         $params[] = $_GET['college'];
         $types .= "i";
     }
-    
-    // Filter by department
+
+    // 학과(Department)로 필터
     if (!empty($_GET['department'])) {
         $searchQuery .= " AND c.departmentID = ?";
         $params[] = $_GET['department'];
         $types .= "i";
     }
     
-    // Filter by keyword (course name or professor)
+    // 과목명 또는 교수명으로 필터
     if (!empty($_GET['keyword'])) {
         $keyword = '%' . $_GET['keyword'] . '%';
         $searchQuery .= " AND (c.courseName LIKE ? OR u.userName LIKE ?)";
@@ -544,11 +548,10 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
         <div class="contentWrapper">
             <div class="courseList">
                 <table>
-                    <caption>수강신청 내역</caption>
                     <thead>
                         <tr>
                             <th>No.</th>
-                            <th>교과구분</th>
+                            <th>이수구분</th>
                             <th>과목코드</th>
                             <th>교과목명</th>
                             <th>교수명</th>
@@ -567,11 +570,7 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                         ?>
                         <tr>
                             <td><?= $rowNum++ ?></td>
-                            <td>
-                                <span class="courseType <?= $isRequired ? 'required' : 'elective' ?>">
-                                    <?= $isRequired ? '필수' : '선택' ?>
-                                </span>
-                            </td>
+                            <td><?= htmlspecialchars($course['creditType']) ?></td>
                             <td><?= htmlspecialchars($course['courseID']) ?></td>
                             <td><?= htmlspecialchars($course['courseName']) ?></td>
                             <td><?= htmlspecialchars($course['professor']) ?></td>
@@ -597,7 +596,6 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
             </div>
             <div class="timeTable">
                 <table>
-                    <caption>시간표</caption>
                     <thead>
                         <tr>
                             <th></th>
@@ -611,8 +609,8 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                     </thead>
                     <tbody>
                         <?php 
-                        // Create timetable
-                        for ($i = 1; $i <= 10; $i++) { 
+                        // 시간표를 1교시부터 13교시까지 반복
+                        for ($i = 1; $i <= 13; $i++) { 
                         ?>
                         <tr>
                             <td class="time"><?= $i ?></td>
@@ -696,7 +694,7 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
             <thead>
                 <tr>
                     <th>No.</th>
-                    <th>교과구분</th>
+                    <th>이수구분</th>
                     <th>과목코드</th>
                     <th>교과목명</th>
                     <th>학과</th>
@@ -709,7 +707,7 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
             </thead>
             <tbody>
                 <?php 
-                if (isset($searchResults) && $searchResults->num_rows > 0) {
+                if ($searchResults !== null && $searchResults->num_rows > 0) {
                     $rowNum = 1;
                     while ($course = $searchResults->fetch_assoc()) {
                         $isRequired = ($course['creditType'] === '필수');
@@ -724,11 +722,7 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                 ?>
                 <tr>
                     <td><?= $rowNum++ ?></td>
-                    <td>
-                        <span class="courseType <?= $isRequired ? 'required' : 'elective' ?>">
-                            <?= $isRequired ? '필수' : '선택' ?>
-                        </span>
-                    </td>
+                    <td><?= htmlspecialchars($course['creditType']) ?></td>
                     <td><?= htmlspecialchars($course['courseID']) ?></td>
                     <td><?= htmlspecialchars($course['courseName']) ?></td>
                     <td><?= htmlspecialchars($course['departmentName']) ?></td>
@@ -801,6 +795,7 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
         // 수강신청 취소 함수
         function deleteCourse(courseID) {
             if (confirm('정말로 이 강의를 취소하시겠습니까?')) {
+                // 서버에 삭제 요청 보내는
                 alert('수강신청 취소 기능은 실제 구현 시 AJAX를 통해 서버에 요청하게 됩니다.');
             }
         }
