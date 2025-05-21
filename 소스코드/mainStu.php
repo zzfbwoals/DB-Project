@@ -29,18 +29,33 @@ $studentResult = $stmt->get_result();
 $studentInfo = $studentResult->fetch_assoc();
 $stmt->close();
 
-// 수강신청 내역 가져오기
-$enrolledQuery = "SELECT e.*, c.courseName, c.credits, u.userName as professor, ct.dayOfWeek, ct.startPeriod, ct.endPeriod, c.creditType
+// 수강신청 내역 가져오기 (중복 제거를 위해 CourseTime을 별도로 처리)
+$enrolledQuery = "SELECT e.*, c.courseName, c.credits, u.userName as professor, c.creditType
                 FROM Enroll e
                 JOIN Course c ON e.courseID = c.courseID
                 LEFT JOIN User u ON c.professorID = u.userID
-                LEFT JOIN CourseTime ct ON c.courseID = ct.courseID
                 WHERE e.userID = ?";
 $stmt = $conn->prepare($enrolledQuery);
 $stmt->bind_param("s", $studentID);
 $stmt->execute();
 $enrolledCourses = $stmt->get_result();
 $stmt->close();
+
+// CourseTime 데이터를 별도로 가져오기
+$courseTimesQuery = "SELECT ct.courseID, ct.dayOfWeek, ct.startPeriod, ct.endPeriod
+                     FROM CourseTime ct
+                     WHERE ct.courseID IN (SELECT courseID FROM Enroll WHERE userID = ?)";
+$stmt = $conn->prepare($courseTimesQuery);
+$stmt->bind_param("s", $studentID);
+$stmt->execute();
+$courseTimesResult = $stmt->get_result();
+$stmt->close();
+
+// CourseTime 데이터를 courseID별로 그룹화
+$courseTimes = [];
+while ($time = $courseTimesResult->fetch_assoc()) {
+    $courseTimes[$time['courseID']][] = $time;
+}
 
 // 총 학점 및 시간표 데이터 초기화
 $totalCredits = 0;
@@ -53,17 +68,75 @@ if ($enrolledCourses->num_rows > 0) {
     while ($course = $enrolledCourses->fetch_assoc()) {
         $totalCredits += $course['credits'];
 
-        // 시간표 데이터를 저장 (중복 요일 및 시간대 처리)
-        if (!empty($course['dayOfWeek']) && !empty($course['startPeriod']) && !empty($course['endPeriod'])) {
-            $day = $course['dayOfWeek'];
-            $start = intval($course['startPeriod']);
-            $end = intval($course['endPeriod']);
-            
-            for ($period = $start; $period <= $end; $period++) {
-                $timeTable[$day][$period] = [
-                    'courseName' => $course['courseName'],
-                    'courseID' => $course['courseID']
-                ];
+        // 시간표 데이터 저장 (A, B 구분 포함)
+        if (isset($courseTimes[$course['courseID']])) {
+            foreach ($courseTimes[$course['courseID']] as $time) {
+                $day = $time['dayOfWeek'];
+                $start = $time['startPeriod'];
+                $end = $time['endPeriod'];
+
+                // A/B가 포함된 경우와 숫자만 있는 경우 구분
+                $startNum = (int)preg_replace('/[AB]/', '', $start);
+                $endNum = (int)preg_replace('/[AB]/', '', $end);
+                $startAB = preg_match('/[AB]/', $start) ? substr($start, -1) : '';
+                $endAB = preg_match('/[AB]/', $end) ? substr($end, -1) : '';
+
+                if ($startAB === '' && $endAB === '') {
+                    // 숫자만 있는 경우: A와 B 모두 표시
+                    for ($period = $startNum; $period <= $endNum; $period++) {
+                        $timeTable[$day][$period]['A'] = [
+                            'courseName' => $course['courseName'],
+                            'courseID' => $course['courseID']
+                        ];
+                        $timeTable[$day][$period]['B'] = [
+                            'courseName' => $course['courseName'],
+                            'courseID' => $course['courseID']
+                        ];
+                    }
+                } else {
+                    // A/B가 명시된 경우: startAB에서 endAB까지 표시, 중간 교시는 A와 B 모두
+                    for ($period = $startNum; $period <= $endNum; $period++) {
+                        if ($period == $startNum) {
+                            // 시작 교시: startAB에 따라 A 또는 B 시작
+                            if ($startAB == 'A' || $startAB == '') {
+                                $timeTable[$day][$period]['A'] = [
+                                    'courseName' => $course['courseName'],
+                                    'courseID' => $course['courseID']
+                                ];
+                            }
+                            if ($startAB == 'B' || $startAB == '' || $startAB == 'A') {
+                                $timeTable[$day][$period]['B'] = [
+                                    'courseName' => $course['courseName'],
+                                    'courseID' => $course['courseID']
+                                ];
+                            }
+                        } elseif ($period == $endNum) {
+                            // 종료 교시: endAB에 따라 A 또는 B 끝
+                            if ($endAB == 'A' || $endAB == '') {
+                                $timeTable[$day][$period]['A'] = [
+                                    'courseName' => $course['courseName'],
+                                    'courseID' => $course['courseID']
+                                ];
+                            }
+                            if ($endAB == 'B' || $endAB == '') {
+                                $timeTable[$day][$period]['B'] = [
+                                    'courseName' => $course['courseName'],
+                                    'courseID' => $course['courseID']
+                                ];
+                            }
+                        } else {
+                            // 중간 교시: A와 B 모두 표시
+                            $timeTable[$day][$period]['A'] = [
+                                'courseName' => $course['courseName'],
+                                'courseID' => $course['courseID']
+                            ];
+                            $timeTable[$day][$period]['B'] = [
+                                'courseName' => $course['courseName'],
+                                'courseID' => $course['courseID']
+                            ];
+                        }
+                    }
+                }
             }
         }
     }
@@ -564,7 +637,15 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                         $rowNum = 1;
                         if ($enrolledCourses->num_rows > 0) {
                             while ($course = $enrolledCourses->fetch_assoc()) { 
-                                $courseDay = isset($daysKorean[$course['dayOfWeek']]) ? $daysKorean[$course['dayOfWeek']] : $course['dayOfWeek'];
+                                // 강의 시간 포맷팅
+                                $timeSlots = [];
+                                if (isset($courseTimes[$course['courseID']])) {
+                                    foreach ($courseTimes[$course['courseID']] as $time) {
+                                        $day = isset($daysKorean[$time['dayOfWeek']]) ? $daysKorean[$time['dayOfWeek']] : $time['dayOfWeek'];
+                                        $timeSlots[] = "$day {$time['startPeriod']}-{$time['endPeriod']}";
+                                    }
+                                }
+                                $timeDisplay = implode('/', $timeSlots);
                         ?>
                         <tr>
                             <td><?= $rowNum++ ?></td>
@@ -573,7 +654,7 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                             <td><?= htmlspecialchars($course['courseName']) ?></td>
                             <td><?= htmlspecialchars($course['professor']) ?></td>
                             <td><?= htmlspecialchars($course['credits']) ?></td>
-                            <td><?= htmlspecialchars($courseDay) ?> <?= htmlspecialchars($course['startPeriod']) ?>-<?= htmlspecialchars($course['endPeriod']) ?></td>
+                            <td><?= htmlspecialchars($timeDisplay) ?></td>
                             <td>
                                 <form method="post" action="cancelEnrollment.php" style="display:inline;">
                                     <input type="hidden" name="courseID" value="<?= $course['courseID'] ?>">
@@ -607,22 +688,41 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                     </thead>
                     <tbody>
                         <?php 
-                        // 시간표를 1교시부터 13교시까지 반복
+                        // 시간표를 1교시부터 13교시까지 반복, 각 교시에 A와 B 추가
                         for ($i = 1; $i <= 13; $i++) { 
-                        ?>
-                        <tr>
-                            <td class="time"><?= $i ?></td>
-                            <?php foreach (array('월', '화', '수', '목', '금', '토') as $day) { ?>
-                                <td <?php if (isset($timeTable[$day][$i])) { 
-                                    echo "class='course' title='" . htmlspecialchars($timeTable[$day][$i]['courseName']) . "'>";
-                                    echo htmlspecialchars(substr($timeTable[$day][$i]['courseName'], 0, 8));
-                                    if (strlen($timeTable[$day][$i]['courseName']) > 8) echo "...";
+                            // A row
+                            echo "<tr>";
+                            echo "<td class='time' rowspan='2'>$i</td>";
+                            foreach (array('월', '화', '수', '목', '금', '토') as $day) {
+                                $dayEng = $daysEnglish[$day];
+                                echo "<td ";
+                                if (isset($timeTable[$day][$i]['A'])) { 
+                                    echo "class='course' title='" . htmlspecialchars($timeTable[$day][$i]['A']['courseName']) . "'>";
+                                    echo htmlspecialchars(substr($timeTable[$day][$i]['A']['courseName'], 0, 8));
+                                    if (strlen($timeTable[$day][$i]['A']['courseName']) > 8) echo "...";
                                 } else {
                                     echo ">";
-                                } ?></td>
-                            <?php } ?>
-                        </tr>
-                        <?php } ?>
+                                }
+                                echo "</td>";
+                            }
+                            echo "</tr>";
+
+                            // B row
+                            echo "<tr>";
+                            foreach (array('월', '화', '수', '목', '금', '토') as $day) {
+                                $dayEng = $daysEnglish[$day];
+                                echo "<td ";
+                                if (isset($timeTable[$day][$i]['B'])) { 
+                                    echo "class='course' title='" . htmlspecialchars($timeTable[$day][$i]['B']['courseName']) . "'>";
+                                    echo htmlspecialchars(substr($timeTable[$day][$i]['B']['courseName'], 0, 8));
+                                    if (strlen($timeTable[$day][$i]['B']['courseName']) > 8) echo "...";
+                                } else {
+                                    echo ">";
+                                }
+                                echo "</td>";
+                            }
+                            echo "</tr>";
+                        } ?>
                     </tbody>
                 </table>
             </div>
@@ -682,7 +782,7 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
         </form>
 
         <div class="notification">
-            <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2IDE2IiBmaWxsPSIjOTk5Ij48cGF0aCBkPSJNOCAxQzQuMTQgMSAxIDQuMTQgMSA4QzEgMTEuODYgNC4xNCAxNSA4IDE1QzExLjg2IDE1IDE1IDExLjg2IDE1IDhDMTUgNC4xNCAxMS44NiAxIDggMU0gOCAxNkM0LjY4NiAxNiAyIDE0LjMxNCAyIDEwQzIgNS42ODYgNC42ODYgMiA4IDJDMTEuMzEzIDIgMTQgNS42ODYgMTQgMTBDMTQgMTQuMzE0IDExLjMxMyAxNiA4IDE2Ij48L3BhdGg+PHBhdGggZD0iTTcgM0g5VjlIN1YzWk0gNyAxMUg5VjEzSDdWMTFaIj48L3BhdGg+PC9zdmc+" alt="정보">
+            <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2IDE2IiBmaWxsPSIjOTk5Ij48cGF0aCBkPSJNOCAxQzQuMTQgMSAxIDQuMTQgMSA4QzEgMTEuODYgNC4xNCAxNSA4IDE1QzExLjg2IDE1IDE1IDExLjg2IDE1IDhDMTUgNC4xNCAxMS44NiAxIDggMU0gOCAxNkM0LjY4NiAxNiAyIDE0LjMxNCAyIDEwQzIgNS42ODYgNC42ODYgMiA4IDJDMTEuMzEzIDIgMTQgNS42ODYgMTQgMTBDMTQgMTQuMzE0IDExLjMxMyAxNiA4IDE2Ij48L3BhdGg+PHBhdGggZD0iTTcgM0g9VjlIN1YzWk0gNyAxMUg9VjEzSDdWMTFaIj48L3BhdGg+PC9zdmc+" alt="정보">
             실시간으로 수강신청 상태가 반영됩니다. 모든 신청은 시스템에 즉시 기록됩니다.
         </div>
 
