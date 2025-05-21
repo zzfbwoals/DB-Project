@@ -36,14 +36,13 @@ $enrolledQuery = "SELECT e.*, c.courseName, c.credits, u.userName as professor, 
                 LEFT JOIN User u ON c.professorID = u.userID
                 LEFT JOIN CourseTime ct ON c.courseID = ct.courseID
                 WHERE e.userID = ?";
-
 $stmt = $conn->prepare($enrolledQuery);
 $stmt->bind_param("s", $studentID);
 $stmt->execute();
 $enrolledCourses = $stmt->get_result();
 $stmt->close();
 
-// 총 학점 계산
+// 총 학점 및 시간표 데이터 초기화
 $totalCredits = 0;
 $totalCourses = 0;
 $timeTable = array(); // 시간표 데이터를 저장하기 위한 배열
@@ -54,7 +53,7 @@ if ($enrolledCourses->num_rows > 0) {
     while ($course = $enrolledCourses->fetch_assoc()) {
         $totalCredits += $course['credits'];
 
-        // 시간표 데이터를 저장
+        // 시간표 데이터를 저장 (중복 요일 및 시간대 처리)
         if (!empty($course['dayOfWeek']) && !empty($course['startPeriod']) && !empty($course['endPeriod'])) {
             $day = $course['dayOfWeek'];
             $start = intval($course['startPeriod']);
@@ -565,7 +564,6 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                         $rowNum = 1;
                         if ($enrolledCourses->num_rows > 0) {
                             while ($course = $enrolledCourses->fetch_assoc()) { 
-                                $isRequired = ($course['creditType'] === '필수');
                                 $courseDay = isset($daysKorean[$course['dayOfWeek']]) ? $daysKorean[$course['dayOfWeek']] : $course['dayOfWeek'];
                         ?>
                         <tr>
@@ -614,7 +612,7 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                         ?>
                         <tr>
                             <td class="time"><?= $i ?></td>
-                            <?php foreach (array('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat') as $day) { ?>
+                            <?php foreach (array('월', '화', '수', '목', '금', '토') as $day) { ?>
                                 <td <?php if (isset($timeTable[$day][$i])) { 
                                     echo "class='course' title='" . htmlspecialchars($timeTable[$day][$i]['courseName']) . "'>";
                                     echo htmlspecialchars(substr($timeTable[$day][$i]['courseName'], 0, 8));
@@ -710,7 +708,6 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                 if ($searchResults !== null && $searchResults->num_rows > 0) {
                     $rowNum = 1;
                     while ($course = $searchResults->fetch_assoc()) {
-                        $isRequired = ($course['creditType'] === '필수');
                         $courseDay = isset($daysKorean[$course['dayOfWeek']]) ? $daysKorean[$course['dayOfWeek']] : $course['dayOfWeek'];
                         
                         // Check if student is already enrolled in this course

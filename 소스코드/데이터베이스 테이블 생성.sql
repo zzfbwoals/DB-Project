@@ -56,7 +56,6 @@ CREATE TABLE Course (
 CREATE TABLE CourseTime (
     courseTimeID INT AUTO_INCREMENT PRIMARY KEY, -- 강의시간표 ID
     courseID VARCHAR(5),                         -- 강의번호
-    courseTime INT,                              -- 강의시간
     dayOfWeek VARCHAR(5),                        -- 요일
     startPeriod VARCHAR(5),                      -- 시작시간
     endPeriod VARCHAR(5),                        -- 종료시간
