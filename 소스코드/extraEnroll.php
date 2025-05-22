@@ -11,11 +11,25 @@ $conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
 if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
 $conn->set_charset("utf8");
 
+// 학생 ID 정의 (먼저 정의)
+$studentID = $_SESSION["userID"];
+
+// 검색 결과 조회 시 이미 요청한 강의인지 확인하기 위해 ExtraEnroll 데이터 가져오기
+$extraEnrollQuery = "SELECT courseID, extraEnrollStatus FROM ExtraEnroll WHERE userID = ? AND extraEnrollStatus = '대기'";
+$stmt = $conn->prepare($extraEnrollQuery);
+$stmt->bind_param("s", $studentID);
+$stmt->execute();
+$extraEnrollResult = $stmt->get_result();
+$extraEnrollCourses = [];
+while ($row = $extraEnrollResult->fetch_assoc()) {
+    $extraEnrollCourses[$row['courseID']] = $row['extraEnrollStatus'];
+}
+$stmt->close();
+
 // 빌넣요청 처리
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'extraEnroll') {
     $courseID = trim($_POST['courseID']);
     $reason = trim($_POST['reason']);
-    $studentID = $_SESSION["userID"];
 
     // 1. 과목코드 유효성 확인 및 정원 확인
     $courseCheckQuery = "SELECT courseID, capacity, currentEnrollment FROM Course WHERE courseID = ?";
@@ -37,19 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         exit();
     }
 
-    // 2. 이미 요청했는지 확인
-    $alreadyRequestedQuery = "SELECT * FROM ExtraEnroll WHERE userID = ? AND courseID = ? AND extraEnrollStatus = '대기'";
-    $stmt = $conn->prepare($alreadyRequestedQuery);
-    $stmt->bind_param("ss", $studentID, $courseID);
-    $stmt->execute();
-    $alreadyRequestedResult = $stmt->get_result();
-    if ($alreadyRequestedResult->num_rows > 0) {
-        echo json_encode(['success' => false, 'message' => '이미 요청 중인 과목입니다.']);
-        exit();
-    }
-    $stmt->close();
-
-    // 3. 이미 수강신청했는지 확인 (Enroll 테이블 확인)
+    // 2. 이미 수강신청했는지 확인 (Enroll 테이블 확인)
     $alreadyEnrolledQuery = "SELECT * FROM Enroll WHERE userID = ? AND courseID = ?";
     $stmt = $conn->prepare($alreadyEnrolledQuery);
     $stmt->bind_param("ss", $studentID, $courseID);
@@ -61,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
     $stmt->close();
 
-    // 4. 빌넣요청 등록
+    // 3. 빌넣요청 등록
     $insertQuery = "INSERT INTO ExtraEnroll (userID, courseID, reason, extraEnrollStatus) VALUES (?, ?, ?, '대기')";
     $stmt = $conn->prepare($insertQuery);
     $stmt->bind_param("sss", $studentID, $courseID, $reason);
@@ -76,19 +78,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit();
 }
 
-// 검색 결과 조회 시 이미 요청한 강의인지 확인하기 위해 ExtraEnroll 데이터 가져오기
-$extraEnrollQuery = "SELECT courseID, extraEnrollStatus FROM ExtraEnroll WHERE userID = ? AND extraEnrollStatus = '대기'";
-$stmt = $conn->prepare($extraEnrollQuery);
-$stmt->bind_param("s", $studentID);
-$stmt->execute();
-$extraEnrollResult = $stmt->get_result();
-$extraEnrollCourses = [];
-while ($row = $extraEnrollResult->fetch_assoc()) {
-    $extraEnrollCourses[$row['courseID']] = $row['extraEnrollStatus'];
-}
-$stmt->close();
+// 빌넣요청 취소 처리
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'cancelExtraEnroll') {
+    $courseID = trim($_POST['courseID']);
 
-$studentID = $_SESSION["userID"];
+    // 요청 존재 여부 확인
+    $checkQuery = "SELECT * FROM ExtraEnroll WHERE userID = ? AND courseID = ? AND extraEnrollStatus = '대기'";
+    $stmt = $conn->prepare($checkQuery);
+    $stmt->bind_param("ss", $studentID, $courseID);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows === 0) {
+        echo json_encode(['success' => false, 'message' => '취소할 요청이 존재하지 않습니다.']);
+        exit();
+    }
+    $stmt->close();
+
+    // 요청 삭제
+    $deleteQuery = "DELETE FROM ExtraEnroll WHERE userID = ? AND courseID = ?";
+    $stmt = $conn->prepare($deleteQuery);
+    $stmt->bind_param("ss", $studentID, $courseID);
+    $success = $stmt->execute();
+    $stmt->close();
+
+    if ($success) {
+        echo json_encode(['success' => true, 'message' => '빌넣요청이 취소되었습니다.']);
+    } else {
+        echo json_encode(['success' => false, 'message' => '빌넣요청 취소 중 오류가 발생했습니다. 다시 시도해주세요.']);
+    }
+    exit();
+}
+
 $studentQuery = "SELECT u.userID, u.userName, u.grade, u.lastSemesterCredits, u.userRole, 
                         u.departmentID, d.departmentName, c.collegeName 
                 FROM User u 
@@ -685,7 +705,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') {
                         <td><?= htmlspecialchars($course['capacity']) ?>/<?= htmlspecialchars($course['currentEnrollment']) ?></td>
                         <td>
                             <?php if ($isRequested) { ?>
-                                <button class="disabledButton" disabled>요청됨</button>
+                                <button class="deleteButton" onclick="cancelExtraEnroll('<?= htmlspecialchars($course['courseID']) ?>')">빌넣취소</button>
                             <?php } elseif ($course['currentEnrollment'] < $course['capacity']) { ?>
                                 <button class="disabledButton" disabled>빌넣불가</button>
                             <?php } else { ?>
@@ -851,10 +871,35 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') {
             closeModal();
         });
     });
+    // 빌넣요청 취소
+    function cancelExtraEnroll(courseID) {
+        if (!confirm('빌넣요청을 취소하시겠습니까?')) {
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('action', 'cancelExtraEnroll');
+        formData.append('courseID', courseID);
+
+        fetch('extraEnroll.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+            if (data.success) {
+                window.location.reload();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('취소 처리 중 오류가 발생했습니다.');
+        });
+    }
 </script>
 </body>
 </html>
 <?php
 $conn->close();
-// TODO: 후에 수강신청 종료 후 정정기간(예: 2025-05-26 ~ 2025-05-30) 동안만 빌넣 요청 가능하도록 기간 제한 추가.
 ?>
