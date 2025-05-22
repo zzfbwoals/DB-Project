@@ -792,7 +792,7 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                 </div>
                 
                 <div class="searchRow">
-                    <label for="college">단과대학</label>
+                    <label for="detailSearch">상세검색</label>
                     <select id="college" name="college">
                         <option value="">전체</option>
                         <?php while ($college = $colleges->fetch_assoc()) { ?>
