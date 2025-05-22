@@ -32,6 +32,31 @@ $studentResult = $stmt->get_result();
 $studentInfo = $studentResult->fetch_assoc();
 $stmt->close();
 
+// Course 테이블에서 area 목록 가져오기
+$areaQuery = "SELECT DISTINCT area FROM Course WHERE area IS NOT NULL AND area != '' ORDER BY area";
+$areaResult = $conn->query($areaQuery);
+$areas = [];
+if ($areaResult) {
+    while ($row = $areaResult->fetch_assoc()) {
+        $areas[] = $row['area'];
+    }
+    $areaResult->free();
+}
+// (중핵) 하단으로 정렬 ---
+$areas_normal = [];
+$areas_core = [];
+foreach ($areas as $area_item) {
+    if (strpos($area_item, '(중핵)') !== false) {
+        $areas_core[] = $area_item;
+    } else {
+        $areas_normal[] = $area_item;
+    }
+}
+// 기본 정렬 후 (중핵) 항목을 뒤에 붙임
+sort($areas_normal); // 일반 항목 가나다순 정렬
+sort($areas_core);   // (중핵) 항목 가나다순 정렬
+$areas = array_merge($areas_normal, $areas_core); // 두 배열을 합침
+
 // 수강신청 내역 가져오기 (중복 제거를 위해 CourseTime을 별도로 처리)
 $enrolledQuery = "SELECT e.*, c.courseName, c.credits, u.userName as professor, c.creditType
                 FROM Enroll e
@@ -191,12 +216,22 @@ $maxCredits = ($studentInfo['lastSemesterCredits'] >= 3.0) ? 19 : 18;
 // 검색 드롭다운을 위한 모든 단과대학 조회
 $collegesQuery = "SELECT * FROM College ORDER BY collegeName";
 $colleges = $conn->query($collegesQuery);
+$colleges_arr_for_js = []; // JS 전달용 배열
+if ($colleges && $colleges->num_rows > 0) {
+    $colleges_arr_for_js = $colleges->fetch_all(MYSQLI_ASSOC);
+    $colleges->data_seek(0); // HTML 생성을 위해 포인터 리셋
+}
 
 // 검색 드롭다운을 위한 모든 학과 조회
 $departmentsQuery = "SELECT d.*, c.collegeName FROM Department d 
                      JOIN College c ON d.collegeID = c.collegeID 
                      ORDER BY c.collegeName, d.departmentName";
 $departments = $conn->query($departmentsQuery);
+$departments_arr_for_js = []; // JS 전달용 배열
+if ($departments && $departments->num_rows > 0) {
+    $departments_arr_for_js = $departments->fetch_all(MYSQLI_ASSOC);
+    $departments->data_seek(0); // HTML 생성을 위해 포인터 리셋
+}
 
 // 요일 매핑
 $daysKorean = [
@@ -221,58 +256,76 @@ $daysEnglish = [
 $searchResults = null;
 
 // 검색 기능
-if (isset($_GET['search']) && $_GET['search'] == '1') {
-    $searchQuery = "SELECT c.*, u.userName as professor, d.departmentName, ct.dayOfWeek, ct.startPeriod, ct.endPeriod 
-                   FROM Course c 
-                   LEFT JOIN User u ON c.professorID = u.userID
-                   LEFT JOIN Department d ON c.departmentID = d.departmentID
-                   LEFT JOIN CourseTime ct ON c.courseID = ct.courseID
-                   WHERE 1=1";
-    
+if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'search' 대신 'perform_search' 사용 (폼 name과 구분)
+    $searchType = isset($_GET['searchType']) ? $_GET['searchType'] : 'all';
+
+    $baseQuery = "SELECT c.*, u.userName as professor, d.departmentName, 
+                  GROUP_CONCAT(DISTINCT CONCAT(ct.dayOfWeek, ' ', ct.startPeriod, '-', ct.endPeriod) SEPARATOR ', ') as courseTimesFormatted
+                  FROM Course c
+                  LEFT JOIN User u ON c.professorID = u.userID
+                  LEFT JOIN Department d ON c.departmentID = d.departmentID
+                  LEFT JOIN CourseTime ct ON c.courseID = ct.courseID";
+    $whereClauses = [];
     $params = [];
     $types = "";
     
-    // 강의구분(교과구분)로 필터 (creditType)
-    if (!empty($_GET['courseType'])) {
-        $searchQuery .= " AND c.creditType = ?";
-        $params[] = $_GET['courseType'];
+    if ($searchType == 'cart') {
+        // 현재 로그인한 학생($studentID)의 장바구니에 있는 강의 검색
+        // Cart 테이블 구조에 따라 JOIN 및 WHERE 조건 추가 필요
+        // 예시: JOIN Cart ca ON c.courseID = ca.courseID WHERE ca.userID = ?
+        // 이 부분은 Cart 테이블이 정의된 후 구체화해야 합니다.
+        // 임시로 Cart 테이블이 있다고 가정하고 userID로 필터링
+        $baseQuery .= " JOIN Cart cart_table ON c.courseID = cart_table.courseID"; // 실제 Cart 테이블명으로 변경
+        $whereClauses[] = "cart_table.userID = ?"; // 실제 Cart 테이블의 userID 컬럼명으로 변경
+        $params[] = $studentID;
         $types .= "s";
+    } elseif ($searchType == 'area') {
+        if (!empty($_GET['detailSearch'])) {
+            $whereClauses[] = "c.area = ?";
+            $params[] = $_GET['detailSearch'];
+            $types .= "s";
+        }
+    } elseif ($searchType == 'college_department') {
+        if (!empty($_GET['detailSearch'])) { // 단과대학 ID
+            $whereClauses[] = "d.collegeID = ?";
+            $params[] = $_GET['detailSearch'];
+            $types .= "i";
+        }
+        if (!empty($_GET['department'])) { // 학과 ID
+            $whereClauses[] = "c.departmentID = ?";
+            $params[] = $_GET['department'];
+            $types .= "i";
+        }
     }
-    
-    // 단과대학(College)로 필터
-    if (!empty($_GET['college'])) {
-        $searchQuery .= " AND d.collegeID = ?";
-        $params[] = $_GET['college'];
-        $types .= "i";
-    }
+    // 'all' 타입은 별도 조건 없음
 
-    // 학과(Department)로 필터
-    if (!empty($_GET['department'])) {
-        $searchQuery .= " AND c.departmentID = ?";
-        $params[] = $_GET['department'];
-        $types .= "i";
-    }
-    
-    // 과목명 또는 교수명으로 필터
+    // 키워드 검색
     if (!empty($_GET['keyword'])) {
         $keyword = '%' . $_GET['keyword'] . '%';
-        $searchQuery .= " AND (c.courseName LIKE ? OR u.userName LIKE ?)";
+        $whereClauses[] = "(c.courseName LIKE ? OR u.userName LIKE ?)";
         $params[] = $keyword;
         $params[] = $keyword;
         $types .= "ss";
     }
-    
-    $searchQuery .= " GROUP BY c.courseID ORDER BY c.courseID";
-    
-    $stmt = $conn->prepare($searchQuery);
-    
-    if (!empty($params)) {
-        $stmt->bind_param($types, ...$params);
+
+    $searchQuery = $baseQuery;
+    if (!empty($whereClauses)) {
+        $searchQuery .= " WHERE " . implode(" AND ", $whereClauses);
     }
-    
-    $stmt->execute();
-    $searchResults = $stmt->get_result();
-    $stmt->close();
+    $searchQuery .= " GROUP BY c.courseID ORDER BY c.courseID";
+
+    $stmt_search = $conn->prepare($searchQuery);
+    if ($stmt_search) {
+        if (!empty($params)) {
+            $stmt_search->bind_param($types, ...$params);
+        }
+        $stmt_search->execute();
+        $searchResults = $stmt_search->get_result();
+        // $stmt_search->close(); // 결과 사용 후 닫기
+    } else {
+        // 쿼리 준비 실패 처리
+        echo "Error preparing statement: " . $conn->error;
+    }
 }
 ?>
 
@@ -773,93 +826,116 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
             </div>
         </div>
 
-        <!-- 강의 검색 -->
+        <!-- 수강신청 검색 -->
         <form method="get" action="<?= $_SERVER['PHP_SELF'] ?>">
-            <input type="hidden" name="search" value="1">
+            <input type="hidden" name="perform_search" value="1"> <!-- 검색 실행 플래그 -->
             <div class="searchSection">
                 <div class="searchRow">
-                    <label for="courseType">검색구분</label>
-                    <select id="courseType" name="courseType">
-                        <option value="">전체</option>
-                        <option value="필수" <?= isset($_GET['courseType']) && $_GET['courseType'] === '필수' ? 'selected' : '' ?>>교양필수</option>
-                        <option value="선택" <?= isset($_GET['courseType']) && $_GET['courseType'] === '선택' ? 'selected' : '' ?>>교양선택</option>
-                        <option value="전공" <?= isset($_GET['courseType']) && $_GET['courseType'] === '전공' ? 'selected' : '' ?>>전공</option>
+                    <label for="searchType">검색구분</label>
+                    <select id="searchType" name="searchType">
+                        <option value="all" <?= (isset($_GET['searchType']) && $_GET['searchType'] == 'all') || !isset($_GET['searchType']) ? 'selected' : '' ?>>전체</option>
+                        <option value="cart" <?= isset($_GET['searchType']) && $_GET['searchType'] == 'cart' ? 'selected' : '' ?>>장바구니</option>
+                        <option value="area" <?= isset($_GET['searchType']) && $_GET['searchType'] == 'area' ? 'selected' : '' ?>>영역별</option>
+                        <option value="college_department" <?= isset($_GET['searchType']) && $_GET['searchType'] == 'college_department' ? 'selected' : '' ?>>단과대학/학과</option>
                     </select>
 
                     <label for="keyword">검색어</label>
-                    <input type="text" id="keyword" name="keyword" placeholder="과목명 또는 교수명을 입력하세요" 
-                        value="<?= isset($_GET['keyword']) ? htmlspecialchars($_GET['keyword']) : '' ?>">
+                    <input type="text" id="keyword" name="keyword" placeholder="과목명 또는 교수명"
+                           value="<?= isset($_GET['keyword']) ? htmlspecialchars($_GET['keyword']) : '' ?>">
                 </div>
-                
+
                 <div class="searchRow">
                     <label for="detailSearch">상세검색</label>
-                    <select id="college" name="college">
-                        <option value="">전체</option>
-                        <?php while ($college = $colleges->fetch_assoc()) { ?>
-                        <option value="<?= $college['collegeID'] ?>" <?= isset($_GET['college']) && $_GET['college'] == $college['collegeID'] ? 'selected' : '' ?>>
-                            <?= htmlspecialchars($college['collegeName']) ?>
-                        </option>
-                        <?php } ?>
-                    </select>
-                    <label for="department"></label>
-                    <select id="department" name="department">
-                        <option value="">학과 선택</option>
-                        <?php 
-                        // 학과 드롭다운을 단과대학에 따라 필터링
-                        $departments->data_seek(0);
-                        while ($department = $departments->fetch_assoc()) { 
+                    <select id="detailSearch" name="detailSearch" disabled>
+                        <option value="">선택</option>
+                        <?php
+                        // PHP에서 searchType에 따라 초기 옵션 로드 (페이지 리로드 시 선택값 유지를 위해)
+                        // JS에서 주로 처리하므로 여기서는 비워두거나, GET 파라미터가 있을 때만 채울 수 있음
+                        if (isset($_GET['searchType']) && isset($_GET['detailSearch']) && $_GET['detailSearch'] !== '') {
+                            $currentSearchType = $_GET['searchType'];
+                            $currentDetailSearch = $_GET['detailSearch'];
+                            if ($currentSearchType == 'area') {
+                                foreach ($areas as $area_item) {
+                                    echo "<option value=\"".htmlspecialchars($area_item)."\" ".($currentDetailSearch == $area_item ? 'selected' : '').">".htmlspecialchars($area_item)."</option>";
+                                }
+                            } elseif ($currentSearchType == 'college_department') {
+                                if ($colleges && $colleges->num_rows > 0) {
+                                    $colleges->data_seek(0); // 포인터 초기화
+                                    while ($college = $colleges->fetch_assoc()) {
+                                        echo "<option value=\"".$college['collegeID']."\" ".($currentDetailSearch == $college['collegeID'] ? 'selected' : '').">".htmlspecialchars($college['collegeName'])."</option>";
+                                    }
+                                }
+                            }
+                        }
                         ?>
-                        <option value="<?= $department['departmentID'] ?>" 
-                                data-college="<?= $department['collegeID'] ?>"
-                                <?= isset($_GET['department']) && $_GET['department'] == $department['departmentID'] ? 'selected' : '' ?>>
-                            <?= htmlspecialchars($department['departmentName']) ?>
-                        </option>
-                        <?php } ?>
                     </select>
-                </div>
+
+                    <label for="department"></label>
+                    <select id="department" name="department" disabled>
+                        <option value="">선택</option>
+                         <?php
+                        if (isset($_GET['searchType']) && $_GET['searchType'] == 'college_department' && isset($_GET['department']) && $_GET['department'] !== '' && isset($_GET['detailSearch']) && $_GET['detailSearch'] !== '') {
+                            $currentDepartment = $_GET['department'];
+                            $currentCollegeForDept = $_GET['detailSearch'];
+                            if ($departments && $departments->num_rows > 0) {
+                                $departments->data_seek(0);
+                                while ($dept = $departments->fetch_assoc()) {
+                                    if ($dept['collegeID'] == $currentCollegeForDept) {
+                                         echo "<option value=\"".$dept['departmentID']."\" data-college=\"".$dept['collegeID']."\" ".($currentDepartment == $dept['departmentID'] ? 'selected' : '').">".htmlspecialchars($dept['departmentName'])."</option>";
+                                    }
+                                }
+                            }
+                        }
+                        ?>
+                    </select>
+                </div> 
                 
                 <div class="buttonRow">
                     <button type="submit" class="button searchButton">조회</button>
                     <button type="button" class="button resetButton" onclick="resetSearch()">초기화</button>
                 </div>
             </div>
-        </form>
+        </form>                
 
         <div class="notification">
             <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2IDE2IiBmaWxsPSIjOTk5Ij48cGF0aCBkPSJNOCAxQzQuMTQgMSAxIDQuMTQgMSA4QzEgMTEuODYgNC4xNCAxNSA4IDE1QzExLjg2IDE1IDE1IDExLjg2IDE1IDhDMTUgNC4xNCAxMS44NiAxIDggMU0gOCAxNkM0LjY4NiAxNiAyIDE0LjMxNCAyIDEwQzIgNS42ODYgNC42ODYgMiA4IDJDMTEuMzEzIDIgMTQgNS42ODYgMTQgMTBDMTQgMTQuMzE0IDExLjMxMyAxNiA4IDE2Ij48L3BhdGg+PHBhdGggZD0iTTcgM0g9VjlIN1YzWk0gNyAxMUg9VjEzSDdWMTFaIj48L3BhdGg+PC9zdmc+" alt="정보">
             실시간으로 수강신청 상태가 반영됩니다. 모든 신청은 시스템에 즉시 기록됩니다.
         </div>
 
-        <!-- 강의 목록 -->
+        <!-- ... (강의 목록 테이블 표시 부분) ... -->
         <table>
             <caption>강의 목록</caption>
             <thead>
             <tr>
                 <th style="width: 40px;">No.</th>
-                <th style="width: 100px;">이수구분</th>
-                <th style="width: 80px;">과목코드</th>
-                <th style="width: 200px;">교과목명</th>
-                <th style="width: 120px;">학과</th>   
-                <th style="width: 80px;">교수명</th>   
-                <th style="width: 80px;">학점</th>      
-                <th style="width: 80px;">강의시간</th> 
-                <th style="width: 80px;">정원/신청</th>
-                <th style="width: 80px;">신청</th>     
+                <th style="width: 80px;">이수구분</th>
+                <th style="width: 90px;">과목코드</th>
+                <th style="width: 120px;">교과목명</th>
+                <th style="width: 110px;">학과</th>
+                <th style="width: 110px;">교수명</th>
+                <th style="width: 70px;">학점</th>
+                <th style="width: 140px;">강의시간</th> <!-- 수정됨 -->
+                <th style="width: 110px;">정원/신청</th>
+                <th style="width: 110px;">신청</th>
             </tr>
             </thead>
             <tbody>
-                <?php 
+                <?php
                 if ($searchResults !== null && $searchResults->num_rows > 0) {
                     $rowNum = 1;
                     while ($course = $searchResults->fetch_assoc()) {
-                        $courseDay = isset($daysKorean[$course['dayOfWeek']]) ? $daysKorean[$course['dayOfWeek']] : $course['dayOfWeek'];
-                        
-                        // Check if student is already enrolled in this course
-                        $stmt = $conn->prepare("SELECT * FROM Enroll WHERE userID = ? AND courseID = ?");
-                        $stmt->bind_param("ss", $studentID, $course['courseID']);
-                        $stmt->execute();
-                        $alreadyEnrolled = $stmt->get_result()->num_rows > 0;
-                        $stmt->close();
+                        // 이미 수강신청한 강의인지 확인 (기존 로직 필요)
+                        $alreadyEnrolled = false; // 이 부분은 학생의 수강신청 목록과 비교해야 함
+                        // $enrolledCourses 변수를 사용하여 확인
+                        if ($enrolledCourses && $enrolledCourses->num_rows > 0) {
+                            $enrolledCourses->data_seek(0); // 루프마다 포인터 초기화
+                            while ($enrolledCourseItem = $enrolledCourses->fetch_assoc()) {
+                                if ($enrolledCourseItem['courseID'] == $course['courseID']) {
+                                    $alreadyEnrolled = true;
+                                    break;
+                                }
+                            }
+                        }
                 ?>
                 <tr>
                     <td><?= $rowNum++ ?></td>
@@ -869,7 +945,7 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                     <td><?= htmlspecialchars($course['departmentName']) ?></td>
                     <td><?= htmlspecialchars($course['professor']) ?></td>
                     <td><?= htmlspecialchars($course['credits']) ?></td>
-                    <td><?= htmlspecialchars($courseDay) ?> <?= htmlspecialchars($course['startPeriod']) ?>-<?= htmlspecialchars($course['endPeriod']) ?></td>
+                    <td><?= htmlspecialchars($course['courseTimesFormatted']) ?></td> <!-- 수정됨 -->
                     <td><?= htmlspecialchars($course['capacity']) ?>/<?= htmlspecialchars($course['currentEnrollment']) ?></td>
                     <td>
                         <?php if ($alreadyEnrolled) { ?>
@@ -886,7 +962,8 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                 </tr>
                 <?php
                     }
-                } else if (isset($_GET['search']) && $_GET['search'] == '1') {
+                    if ($stmt_search) $stmt_search->close(); // 검색 결과 사용 후 닫기
+                } else if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') {
                 ?>
                 <tr>
                     <td colspan="10">검색 결과가 없습니다.</td>
@@ -900,40 +977,95 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
         </table>
     </div>
 
-    <script>
-        // 단과대학 선택에 따라 학과 목록 변경하는 함수
-        document.getElementById('college').addEventListener('change', function() {
-            const collegeID = this.value;
-            const departmentSelect = document.getElementById('department');
-            const options = departmentSelect.options;
-            
-            // 첫 번째 옵션 빼고 모두 숨기기
-            for (let i = 1; i < options.length; i++) {
-                const option = options[i];
-                if (collegeID === '' || option.getAttribute('data-college') === collegeID) {
-                    option.style.display = '';
-                } else {
-                    option.style.display = 'none';
-                }
+<script>
+        // PHP에서 가져온 데이터
+        const phpAreas = <?= json_encode($areas) ?>;
+        const phpColleges = <?= json_encode($colleges_arr_for_js) ?>;
+        const phpDepartments = <?= json_encode($departments_arr_for_js) ?>;
+
+        const searchTypeSelect = document.getElementById('searchType');
+        const detailSearchSelect = document.getElementById('detailSearch');
+        const departmentSelect = document.getElementById('department');
+        const keywordInput = document.getElementById('keyword');
+        const creditTypeFilterSelect = document.getElementById('creditTypeFilter');
+
+
+        function populateDetailSearch() {
+            const selectedType = searchTypeSelect.value;
+            detailSearchSelect.innerHTML = '<option value="">선택</option>'; // 초기화
+            departmentSelect.innerHTML = '<option value="">선택</option>'; // 학과도 초기화
+            departmentSelect.disabled = true;
+
+            if (selectedType === 'area') {
+                detailSearchSelect.disabled = false;
+                phpAreas.forEach(area => {
+                    const option = new Option(area, area);
+                    detailSearchSelect.add(option);
+                });
+            } else if (selectedType === 'college_department') {
+                detailSearchSelect.disabled = false;
+                phpColleges.forEach(college => {
+                    const option = new Option(college.collegeName, college.collegeID);
+                    detailSearchSelect.add(option);
+                });
+            } else { // 'all', 'cart'
+                detailSearchSelect.disabled = true;
             }
-            
-            // 선택 초기화
-            departmentSelect.selectedIndex = 0;
+        }
+
+        function populateDepartments() {
+            const selectedCollegeID = detailSearchSelect.value;
+            departmentSelect.innerHTML = '<option value="">선택</option>'; // 초기화
+
+            if (searchTypeSelect.value === 'college_department' && selectedCollegeID) {
+                departmentSelect.disabled = false;
+                phpDepartments.forEach(dept => {
+                    if (dept.collegeID == selectedCollegeID) { // 문자열 <-> 숫자 비교 주의
+                        const option = new Option(dept.departmentName, dept.departmentID);
+                        departmentSelect.add(option);
+                    }
+                });
+            } else {
+                departmentSelect.disabled = true;
+            }
+        }
+
+        searchTypeSelect.addEventListener('change', function() {
+            populateDetailSearch();
+            // 상세검색이 변경되면 학과도 자동으로 업데이트 시도 (또는 초기화)
+            populateDepartments();
         });
-        
-        // 검색 초기화 함수
-        function resetSearch() {
-            document.getElementById('courseType').value = '';
-            document.getElementById('college').value = '';
-            document.getElementById('department').value = '';
-            document.getElementById('keyword').value = '';
-            
-            // 모든 학과 옵션 표시
-            const departmentSelect = document.getElementById('department');
-            const options = departmentSelect.options;
-            for (let i = 1; i < options.length; i++) {
-                options[i].style.display = '';
+
+        detailSearchSelect.addEventListener('change', function() {
+            if (searchTypeSelect.value === 'college_department') {
+                populateDepartments();
             }
+        });
+
+        // 페이지 로드 시 초기 상태 설정
+        document.addEventListener('DOMContentLoaded', function() {
+            populateDetailSearch(); // 현재 searchType에 맞게 detailSearch 옵션 채우기
+            // 만약 GET 파라미터로 detailSearch 값이 넘어왔다면 해당 값으로 설정
+            const currentDetailSearchVal = '<?= isset($_GET['detailSearch']) ? htmlspecialchars($_GET['detailSearch']) : '' ?>';
+            if (currentDetailSearchVal && !detailSearchSelect.disabled) {
+                detailSearchSelect.value = currentDetailSearchVal;
+            }
+
+            populateDepartments(); // detailSearch 값에 따라 department 옵션 채우기
+            // 만약 GET 파라미터로 department 값이 넘어왔다면 해당 값으로 설정
+            const currentDepartmentVal = '<?= isset($_GET['department']) ? htmlspecialchars($_GET['department']) : '' ?>';
+            if (currentDepartmentVal && !departmentSelect.disabled) {
+                departmentSelect.value = currentDepartmentVal;
+            }
+        });
+
+        function resetSearch() {
+            searchTypeSelect.value = 'all';
+            creditTypeFilterSelect.value = '';
+            keywordInput.value = '';
+            populateDetailSearch(); // detailSearch 및 department 초기화
+            // GET 파라미터 없이 페이지 리로드하여 완전히 초기화
+            window.location.href = window.location.pathname;
         }
     </script>
 </body>
