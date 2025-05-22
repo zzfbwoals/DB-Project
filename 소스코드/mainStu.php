@@ -16,6 +16,112 @@ $conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
 if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
 $conn->set_charset("utf8");
 
+// 수강신청 처리 함수
+function enrollCourse($conn, $studentID, $courseID, &$totalCredits, $timeTable, $studentInfo) {
+    // 1. 과목코드 유효성 확인
+    $courseCheckQuery = "SELECT courseID, credits, capacity, currentEnrollment FROM Course WHERE courseID = ?";
+    $stmt = $conn->prepare($courseCheckQuery);
+    $stmt->bind_param("s", $courseID);
+    $stmt->execute();
+    $courseResult = $stmt->get_result();
+    
+    if ($courseResult->num_rows === 0) {
+        return "존재하지 않는 과목코드입니다.";
+    }
+    
+    $course = $courseResult->fetch_assoc();
+    $stmt->close();
+    
+    // 2. 이미 수강신청했는지 확인
+    $alreadyEnrolledQuery = "SELECT * FROM Enroll WHERE userID = ? AND courseID = ?";
+    $stmt = $conn->prepare($alreadyEnrolledQuery);
+    $stmt->bind_param("ss", $studentID, $courseID);
+    $stmt->execute();
+    $alreadyEnrolledResult = $stmt->get_result();
+    if ($alreadyEnrolledResult->num_rows > 0) {
+        return "이미 수강신청한 과목입니다.";
+    }
+    $stmt->close();
+    
+    // 3. 정원 확인
+    if ($course['currentEnrollment'] >= $course['capacity']) {
+        return "정원이 가득 찼습니다. 빌넣 요청을 이용해주세요.";
+    }
+    
+    // 4. 학점 초과 확인
+    $newTotalCredits = $totalCredits + $course['credits'];
+    $maxCredits = ($studentInfo['lastSemesterCredits'] >= 3.0) ? 19 : 18;
+    if ($newTotalCredits > $maxCredits) {
+        return "최대 신청 가능 학점을 초과했습니다. (최대: $maxCredits 학점)";
+    }
+    
+    // 5. 시간표 충돌 확인
+    $newCourseTimesQuery = "SELECT dayOfWeek, startPeriod, endPeriod FROM CourseTime WHERE courseID = ?";
+    $stmt = $conn->prepare($newCourseTimesQuery);
+    $stmt->bind_param("s", $courseID);
+    $stmt->execute();
+    $newCourseTimesResult = $stmt->get_result();
+    $newCourseTimes = [];
+    while ($time = $newCourseTimesResult->fetch_assoc()) {
+        $newCourseTimes[] = $time;
+    }
+    $stmt->close();
+    
+    $conflict = false;
+    foreach ($newCourseTimes as $newTime) {
+        $day = $newTime['dayOfWeek'];
+        $start = (int)preg_replace('/[AB]/', '', $newTime['startPeriod']);
+        $end = (int)preg_replace('/[AB]/', '', $newTime['endPeriod']);
+        $startAB = preg_match('/[AB]/', $newTime['startPeriod']) ? substr($newTime['startPeriod'], -1) : '';
+        $endAB = preg_match('/[AB]/', $newTime['endPeriod']) ? substr($newTime['endPeriod'], -1) : '';
+        
+        for ($period = $start; $period <= $end; $period++) {
+            $slotsToCheck = [];
+            if ($startAB === '' && $endAB === '') {
+                $slotsToCheck = ['A', 'B'];
+            } elseif ($startAB === 'A' && $endAB === 'A') {
+                $slotsToCheck = ['A'];
+            } elseif ($startAB === 'B' && $endAB === 'B') {
+                $slotsToCheck = ['B'];
+            } elseif ($startAB === 'A' && $endAB === 'B') {
+                $slotsToCheck = ($period === $start) ? ['A'] : (($period === $end) ? ['B'] : ['A', 'B']);
+            } elseif ($startAB === 'B' && $endAB === 'A') {
+                $slotsToCheck = ($period === $start) ? ['B'] : (($period === $end) ? ['A'] : ['A', 'B']);
+            }
+            
+            foreach ($slotsToCheck as $slot) {
+                if (isset($timeTable[$day][$period][$slot])) {
+                    $conflict = true;
+                    break 3; // 충돌 발견 시 모든 루프 탈출
+                }
+            }
+        }
+    }
+    
+    if ($conflict) {
+        return "시간표가 충돌합니다. 다른 강의를 선택해주세요.";
+    }
+    
+    // 6. 수강신청 등록
+    $enrollQuery = "INSERT INTO Enroll (userID, courseID) VALUES (?, ?)";
+    $stmt = $conn->prepare($enrollQuery);
+    $stmt->bind_param("ss", $studentID, $courseID);
+    $enrollSuccess = $stmt->execute();
+    $stmt->close();
+    
+    if ($enrollSuccess) {
+        // currentEnrollment 증가
+        $updateEnrollmentQuery = "UPDATE Course SET currentEnrollment = currentEnrollment + 1 WHERE courseID = ?";
+        $stmt = $conn->prepare($updateEnrollmentQuery);
+        $stmt->bind_param("s", $courseID);
+        $stmt->execute();
+        $stmt->close();
+        return true;
+    } else {
+        return "수강신청 중 오류가 발생했습니다. 다시 시도해주세요.";
+    }
+}
+
 // 학생 정보 가져오기
 $studentID = $_SESSION["userID"];
 $studentQuery = "SELECT u.userID, u.userName, u.grade, u.lastSemesterCredits, u.userRole, 
@@ -103,121 +209,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID']) && isset(
     exit();
 }
 
-// 과목코드로 수강신청 처리
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quickEnrollCourseID']) && isset($_POST['action']) && $_POST['action'] === 'quickEnroll') {
+// 과목코드로 수강신청 처리 및 신청 버튼 처리
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quickEnrollCourseID']) && isset($_POST['action']) && ($_POST['action'] === 'quickEnroll' || $_POST['action'] === 'enroll')) {
     $quickCourseID = trim($_POST['quickEnrollCourseID']);
     
-    // 1. 과목코드 유효성 확인
-    $courseCheckQuery = "SELECT courseID, credits, capacity, currentEnrollment FROM Course WHERE courseID = ?";
-    $stmt = $conn->prepare($courseCheckQuery);
-    $stmt->bind_param("s", $quickCourseID);
-    $stmt->execute();
-    $courseResult = $stmt->get_result();
+    $result = enrollCourse($conn, $studentID, $quickCourseID, $totalCredits, $timeTable, $studentInfo);
     
-    if ($courseResult->num_rows === 0) {
-        // 과목코드가 존재하지 않음
-        echo "<script>alert('존재하지 않는 과목코드입니다.'); window.location.href='mainStu.php';</script>";
-        $stmt->close();
-        exit();
-    }
-    
-    $course = $courseResult->fetch_assoc();
-    $stmt->close();
-    
-    // 2. 이미 수강신청했는지 확인
-    $alreadyEnrolledQuery = "SELECT * FROM Enroll WHERE userID = ? AND courseID = ?";
-    $stmt = $conn->prepare($alreadyEnrolledQuery);
-    $stmt->bind_param("ss", $studentID, $quickCourseID);
-    $stmt->execute();
-    $alreadyEnrolledResult = $stmt->get_result();
-    if ($alreadyEnrolledResult->num_rows > 0) {
-        echo "<script>alert('이미 수강신청한 과목입니다.'); window.location.href='mainStu.php';</script>";
-        $stmt->close();
-        exit();
-    }
-    $stmt->close();
-    
-    // 3. 정원 확인
-    if ($course['currentEnrollment'] >= $course['capacity']) {
-        echo "<script>alert('정원이 가득 찼습니다. 빌넣 요청을 이용해주세요.'); window.location.href='mainStu.php';</script>";
-        exit();
-    }
-    
-    // 4. 학점 초과 확인
-    $newTotalCredits = $totalCredits + $course['credits'];
-    $maxCredits = ($studentInfo['lastSemesterCredits'] >= 3.0) ? 19 : 18;
-    if ($newTotalCredits > $maxCredits) {
-        echo "<script>alert('최대 신청 가능 학점을 초과했습니다. (최대: $maxCredits 학점)'); window.location.href='mainStu.php';</script>";
-        exit();
-    }
-    
-    // 5. 시간표 충돌 확인
-    $newCourseTimesQuery = "SELECT dayOfWeek, startPeriod, endPeriod FROM CourseTime WHERE courseID = ?";
-    $stmt = $conn->prepare($newCourseTimesQuery);
-    $stmt->bind_param("s", $quickCourseID);
-    $stmt->execute();
-    $newCourseTimesResult = $stmt->get_result();
-    $newCourseTimes = [];
-    while ($time = $newCourseTimesResult->fetch_assoc()) {
-        $newCourseTimes[] = $time;
-    }
-    $stmt->close();
-    
-    $conflict = false;
-    foreach ($newCourseTimes as $newTime) {
-        $day = $newTime['dayOfWeek'];
-        $start = (int)preg_replace('/[AB]/', '', $newTime['startPeriod']);
-        $end = (int)preg_replace('/[AB]/', '', $newTime['endPeriod']);
-        $startAB = preg_match('/[AB]/', $newTime['startPeriod']) ? substr($newTime['startPeriod'], -1) : '';
-        $endAB = preg_match('/[AB]/', $newTime['endPeriod']) ? substr($newTime['endPeriod'], -1) : '';
-        
-        for ($period = $start; $period <= $end; $period++) {
-            $slotsToCheck = [];
-            if ($startAB === '' && $endAB === '') {
-                $slotsToCheck = ['A', 'B'];
-            } elseif ($startAB === 'A' && $endAB === 'A') {
-                $slotsToCheck = ['A'];
-            } elseif ($startAB === 'B' && $endAB === 'B') {
-                $slotsToCheck = ['B'];
-            } elseif ($startAB === 'A' && $endAB === 'B') {
-                $slotsToCheck = ($period === $start) ? ['A'] : (($period === $end) ? ['B'] : ['A', 'B']);
-            } elseif ($startAB === 'B' && $endAB === 'A') {
-                $slotsToCheck = ($period === $start) ? ['B'] : (($period === $end) ? ['A'] : ['A', 'B']);
-            }
-            
-            foreach ($slotsToCheck as $slot) {
-                if (isset($timeTable[$day][$period][$slot])) {
-                    $conflict = true;
-                    break 3; // 충돌 발견 시 모든 루프 탈출
-                }
-            }
-        }
-    }
-    
-    if ($conflict) {
-        echo "<script>alert('시간표가 충돌합니다. 다른 강의를 선택해주세요.'); window.location.href='mainStu.php';</script>";
-        exit();
-    }
-    
-    // 6. 수강신청 등록
-    $enrollQuery = "INSERT INTO Enroll (userID, courseID) VALUES (?, ?)";
-    $stmt = $conn->prepare($enrollQuery);
-    $stmt->bind_param("ss", $studentID, $quickCourseID);
-    $enrollSuccess = $stmt->execute();
-    $stmt->close();
-    
-    if ($enrollSuccess) {
-        // currentEnrollment 증가
-        $updateEnrollmentQuery = "UPDATE Course SET currentEnrollment = currentEnrollment + 1 WHERE courseID = ?";
-        $stmt = $conn->prepare($updateEnrollmentQuery);
-        $stmt->bind_param("s", $quickCourseID);
-        $stmt->execute();
-        $stmt->close();
-        
+    if ($result === true) {
         echo "<script>alert('수강신청이 완료되었습니다.'); window.location.href='mainStu.php';</script>";
         exit();
     } else {
-        echo "<script>alert('수강신청 중 오류가 발생했습니다. 다시 시도해주세요.'); window.location.href='mainStu.php';</script>";
+        echo "<script>alert('$result'); window.location.href='mainStu.php';</script>";
         exit();
     }
 }
@@ -389,13 +391,8 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
     $types = "";
     
     if ($searchType == 'cart') {
-        // 현재 로그인한 학생($studentID)의 장바구니에 있는 강의 검색
-        // Cart 테이블 구조에 따라 JOIN 및 WHERE 조건 추가 필요
-        // 예시: JOIN Cart ca ON c.courseID = ca.courseID WHERE ca.userID = ?
-        // 이 부분은 Cart 테이블이 정의된 후 구체화해야 합니다.
-        // 임시로 Cart 테이블이 있다고 가정하고 userID로 필터링
-        $baseQuery .= " JOIN Cart cart_table ON c.courseID = cart_table.courseID"; // 실제 Cart 테이블명으로 변경
-        $whereClauses[] = "cart_table.userID = ?"; // 실제 Cart 테이블의 userID 컬럼명으로 변경
+        $baseQuery .= " JOIN Cart cart_table ON c.courseID = cart_table.courseID";
+        $whereClauses[] = "cart_table.userID = ?";
         $params[] = $studentID;
         $types .= "s";
     } elseif ($searchType == 'area') {
@@ -440,9 +437,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
         }
         $stmt_search->execute();
         $searchResults = $stmt_search->get_result();
-        // $stmt_search->close(); // 결과 사용 후 닫기
     } else {
-        // 쿼리 준비 실패 처리
         echo "Error preparing statement: " . $conn->error;
     }
 }
@@ -864,6 +859,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
         </div>
 
         <!-- 수강신청 내역 및 시간표 -->
+        <!-- 수강신청 내역 및 시간표 -->
         <div class="contentWrapper">
             <div class="courseList">
                 <table>
@@ -1051,7 +1047,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
 
         <div class="notification">
             <div style="display: flex; align-items: center;">
-                <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2IDE2IiBmaWxsPSIjOTk5Ij48cGF0aCBkPSJNOCAxQzQuMTQgMSAxIDQuMTQgMSA4QzEgMTEuODYgNC4xNCAxNSA4IDE1QzExLjg2IDE1IDE1IDExLjg2IDE1IDhDMTUgNC4xNCAxMS44NiAxIDggMU0gOCAxNkM0LjY4NiAxNiAyIDE0LjMxNCAyIDEwQzIgNS42ODYgNC42ODYgMiA4IDJDMTEuMzEzIDIgMTQgNS42ODYgMTQgMTBDMTQgMTQuMzE0IDExLjMxMyAxNiA4IDE2Ij48L3BhdGg+PHBhdGggZD0iTTcgM0g9VjlIN1YzWk0gNyAxMUg9VjEzSDdWMTFaIj48L3BhdGg+PC9zdmc+" alt="정보">
+                <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2IDE2IiBmaWxsPSIjOTk5Ij48cGF0aCBkPSJNOCAxQzQuMTQgMSAxIDQuMTQgMSA4QzEgMTEuODYgNC4xNCAxNSA4IDE1QzExLjg2IDE1IDE1IDExLjg2IDE1IDhDMTUgNC4xNCAxMS44NiAxIDggMU0gOCAxNkM0LjY4NiAxNiAyIDE0LjMxNCAyIDEwQzIgNS42ODYgNC42ODYgMiA4IDJDMTEuMzEzIDIgMTQgNS42ODYgMTQgMTBDMTQgMTQuMzE0IDExLjMxMyAxNiA4IDE2Ij48L3BhdGg+PHBhdGggZD0iTTcgM0g5VjlIN1YzWk0gNyAxMUg5VjEzSDdWMTFaIj48L3BhdGg+PC9zdmc+" alt="정보">
                 실시간으로 수강신청 상태가 반영됩니다. 모든 신청은 시스템에 즉시 기록됩니다.
             </div>
             <div class="quickEnrollContainer">
@@ -1117,7 +1113,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
                         <?php } else if ($course['currentEnrollment'] >= $course['capacity']) { ?>
                             <button class="registerButton" onclick="requestExtraEnroll('<?= $course['courseID'] ?>')">빌넣요청</button>
                         <?php } else { ?>
-                            <button class="registerButton" onclick="enrollCourse('<?= $course['courseID'] ?>')">신청</button>
+                            <button class="registerButton" onclick="enrollCourse('<?= htmlspecialchars($course['courseID']) ?>')">신청</button>
                         <?php } ?>
                     </td>
                 </tr>
@@ -1148,7 +1144,6 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
     const detailSearchSelect = document.getElementById('detailSearch');
     const departmentSelect = document.getElementById('department');
     const keywordInput = document.getElementById('keyword');
-    const creditTypeFilterSelect = document.getElementById('creditTypeFilter');
 
     function populateDetailSearch() {
         const selectedType = searchTypeSelect.value;
@@ -1221,21 +1216,48 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
 
     function resetSearch() {
         searchTypeSelect.value = 'all';
-        creditTypeFilterSelect.value = '';
         keywordInput.value = '';
         populateDetailSearch(); // detailSearch 및 department 초기화
         // GET 파라미터 없이 페이지 리로드하여 완전히 초기화
         window.location.href = window.location.pathname;
     }
 
-    // 과목코드로 바로 신청
-    function quickEnrollSubmit() {
-        const courseIDInput = document.getElementById('quickEnrollCourseID').value.trim();
-        if (!courseIDInput) {
+    // 과목코드로 바로 신청 및 신청 버튼 공통 함수
+    function submitEnroll(courseID, actionType) {
+        const quickEnrollForm = document.getElementById('quickEnrollForm');
+        const courseIDInput = document.getElementById('quickEnrollCourseID');
+        const actionInput = quickEnrollForm.querySelector('input[name="action"]');
+
+        if (!courseID) {
             alert('과목코드를 입력해주세요.');
             return false;
         }
-        return confirm('과목코드 ' + courseIDInput + '로 수강신청하시겠습니까?');
+
+        if (!confirm(`과목코드 ${courseID}로 수강신청하시겠습니까?`)) {
+            return false;
+        }
+
+        // 폼의 값을 설정
+        courseIDInput.value = courseID;
+        actionInput.value = actionType;
+        quickEnrollForm.submit();
+        return true;
+    }
+
+    // 과목코드 입력으로 신청
+    function quickEnrollSubmit() {
+        const courseIDInput = document.getElementById('quickEnrollCourseID').value.trim();
+        return submitEnroll(courseIDInput, 'quickEnroll');
+    }
+
+    // 신청 버튼으로 수강신청
+    function enrollCourse(courseID) {
+        submitEnroll(courseID, 'enroll');
+    }
+
+    // 빌넣 요청 (미구현)
+    function requestExtraEnroll(courseID) {
+        alert(`빌넣 요청 기능은 아직 구현되지 않았습니다. 과목코드: ${courseID}`);
     }
 </script>
 </body>
