@@ -22,9 +22,29 @@ $stmt->close();
 // 승인/거절 처리 로직
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if (isset($_POST["approve"])) {
+        $userID = $_POST["userID"];
+        $courseID = $_POST["courseID"];
+        
+        // ExtraEnroll 상태 업데이트
         $stmt = $conn->prepare("UPDATE ExtraEnroll SET extraEnrollStatus = '승인' WHERE userID = ? AND courseID = ?");
-        $stmt->bind_param("ss", $_POST["userID"], $_POST["courseID"]);
+        $stmt->bind_param("ss", $userID, $courseID);
         $stmt->execute();
+        
+        // Enroll 테이블에 추가
+        $checkEnroll = $conn->prepare("SELECT COUNT(*) FROM Enroll WHERE userID = ? AND courseID = ?");
+        $checkEnroll->bind_param("ss", $userID, $courseID);
+        $checkEnroll->execute();
+        $checkEnroll->bind_result($count);
+        $checkEnroll->fetch();
+        $checkEnroll->close();
+        
+        if ($count == 0) {
+            $insertEnroll = $conn->prepare("INSERT INTO Enroll (userID, courseID) VALUES (?, ?)");
+            $insertEnroll->bind_param("ss", $userID, $courseID);
+            $insertEnroll->execute();
+            $insertEnroll->close();
+        }
+        
         $stmt->close();
     } elseif (isset($_POST["reject"])) {
         $stmt = $conn->prepare("UPDATE ExtraEnroll SET extraEnrollStatus = '거절' WHERE userID = ? AND courseID = ?");
@@ -44,6 +64,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     list($userID, $courseID) = explode("_", $item);
                     $params[] = $userID;
                     $params[] = $courseID;
+                    if ($status === '승인') {
+                        $checkEnroll = $conn->prepare("SELECT COUNT(*) FROM Enroll WHERE userID = ? AND courseID = ?");
+                        $checkEnroll->bind_param("ss", $userID, $courseID);
+                        $checkEnroll->execute();
+                        $checkEnroll->bind_result($count);
+                        $checkEnroll->fetch();
+                        $checkEnroll->close();
+                        if ($count == 0) {
+                            $insertEnroll = $conn->prepare("INSERT INTO Enroll (userID, courseID) VALUES (?, ?)");
+                            $insertEnroll->bind_param("ss", $userID, $courseID);
+                            $insertEnroll->execute();
+                            $insertEnroll->close();
+                        }
+                    }
                 }
                 $stmt->bind_param($types, ...$params);
                 $stmt->execute();
