@@ -65,7 +65,7 @@ $totalCredits = 0;
 $totalCourses = 0;
 $timeTable = array(); // 시간표 데이터를 저장하기 위한 배열
 
-// 수강신청 취소 처리리
+// 수강신청 취소 처리
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID'])) {
     $deleteCourseID = $_POST['courseID'];
     // 본인만 삭제 가능하도록 userID도 조건에 추가
@@ -700,7 +700,7 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                             <td>
                                 <form method="post" action="mainStu.php" style="display:inline;" onsubmit="return confirm('정말로 이 강의를 취소하시겠습니까?');">
                                     <input type="hidden" name="courseID" value="<?= $course['courseID'] ?>">
-                                    <button type="submit" class="deleteButton">삭제</button>
+                                    <button type="submit" class="deleteButton">취소</button>
                                 </form>
                             </td>
                         </tr>
@@ -778,14 +778,20 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
             <input type="hidden" name="search" value="1">
             <div class="searchSection">
                 <div class="searchRow">
-                    <label for="courseType">강의구분</label>
+                    <label for="courseType">검색구분</label>
                     <select id="courseType" name="courseType">
                         <option value="">전체</option>
                         <option value="필수" <?= isset($_GET['courseType']) && $_GET['courseType'] === '필수' ? 'selected' : '' ?>>교양필수</option>
                         <option value="선택" <?= isset($_GET['courseType']) && $_GET['courseType'] === '선택' ? 'selected' : '' ?>>교양선택</option>
                         <option value="전공" <?= isset($_GET['courseType']) && $_GET['courseType'] === '전공' ? 'selected' : '' ?>>전공</option>
                     </select>
-                    
+
+                    <label for="keyword">검색어</label>
+                    <input type="text" id="keyword" name="keyword" placeholder="과목명 또는 교수명을 입력하세요" 
+                        value="<?= isset($_GET['keyword']) ? htmlspecialchars($_GET['keyword']) : '' ?>">
+                </div>
+                
+                <div class="searchRow">
                     <label for="college">단과대학</label>
                     <select id="college" name="college">
                         <option value="">전체</option>
@@ -795,10 +801,7 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                         </option>
                         <?php } ?>
                     </select>
-                </div>
-                
-                <div class="searchRow">
-                    <label for="department">학과</label>
+                    <label for="department"></label>
                     <select id="department" name="department">
                         <option value="">학과 선택</option>
                         <?php 
@@ -813,10 +816,6 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                         </option>
                         <?php } ?>
                     </select>
-                    
-                    <label for="keyword">검색어</label>
-                    <input type="text" id="keyword" name="keyword" placeholder="과목명 또는 교수명을 입력하세요" 
-                        value="<?= isset($_GET['keyword']) ? htmlspecialchars($_GET['keyword']) : '' ?>">
                 </div>
                 
                 <div class="buttonRow">
@@ -835,18 +834,18 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
         <table>
             <caption>강의 목록</caption>
             <thead>
-                <tr>
-                    <th>No.</th>
-                    <th>이수구분</th>
-                    <th>과목코드</th>
-                    <th>교과목명</th>
-                    <th>학과</th>
-                    <th>교수명</th>
-                    <th>학점</th>
-                    <th>강의시간</th>
-                    <th>정원/신청</th>
-                    <th>신청</th>
-                </tr>
+            <tr>
+                <th style="width: 40px;">No.</th>
+                <th style="width: 100px;">이수구분</th>
+                <th style="width: 80px;">과목코드</th>
+                <th style="width: 200px;">교과목명</th>
+                <th style="width: 120px;">학과</th>   
+                <th style="width: 80px;">교수명</th>   
+                <th style="width: 80px;">학점</th>      
+                <th style="width: 80px;">강의시간</th> 
+                <th style="width: 80px;">정원/신청</th>
+                <th style="width: 80px;">신청</th>     
+            </tr>
             </thead>
             <tbody>
                 <?php 
