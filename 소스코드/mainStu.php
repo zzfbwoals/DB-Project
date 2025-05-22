@@ -693,17 +693,16 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                             <th>Wed</th>
                             <th>Thu</th>
                             <th>Fri</th>
-                            <th>Sat</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php 
                         // 시간표를 1교시부터 13교시까지 반복, 각 교시에 A와 B 추가
-                        for ($i = 1; $i <= 13; $i++) { 
+                        for ($i = 1; $i <= 9; $i++) { 
                             // A row
                             echo "<tr>";
                             echo "<td class='time' rowspan='2'>$i</td>";
-                            foreach (array('월', '화', '수', '목', '금', '토') as $day) {
+                            foreach (array('월', '화', '수', '목', '금') as $day) {
                                 $dayEng = $daysEnglish[$day];
                                 echo "<td ";
                                 if (isset($timeTable[$day][$i]['A'])) { 
@@ -720,7 +719,7 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
 
                             // B row
                             echo "<tr>";
-                            foreach (array('월', '화', '수', '목', '금', '토') as $day) {
+                            foreach (array('월', '화', '수', '목', '금') as $day) {
                                 $dayEng = $daysEnglish[$day];
                                 echo "<td ";
                                 if (isset($timeTable[$day][$i]['B'])) { 
