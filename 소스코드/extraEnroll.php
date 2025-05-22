@@ -1,0 +1,905 @@
+<?php
+header('Content-Type: text/html; charset=UTF-8');
+session_start();
+
+if (!isset($_SESSION["userID"]) || $_SESSION["userRole"] !== 'student') {
+    header("Location: login.php");
+    exit();
+}
+
+$conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
+if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
+$conn->set_charset("utf8");
+
+// 학생 ID 정의 (먼저 정의)
+$studentID = $_SESSION["userID"];
+
+// 검색 결과 조회 시 이미 요청한 강의인지 확인하기 위해 ExtraEnroll 데이터 가져오기
+$extraEnrollQuery = "SELECT courseID, extraEnrollStatus FROM ExtraEnroll WHERE userID = ? AND extraEnrollStatus = '대기'";
+$stmt = $conn->prepare($extraEnrollQuery);
+$stmt->bind_param("s", $studentID);
+$stmt->execute();
+$extraEnrollResult = $stmt->get_result();
+$extraEnrollCourses = [];
+while ($row = $extraEnrollResult->fetch_assoc()) {
+    $extraEnrollCourses[$row['courseID']] = $row['extraEnrollStatus'];
+}
+$stmt->close();
+
+// 빌넣요청 처리
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'extraEnroll') {
+    $courseID = trim($_POST['courseID']);
+    $reason = trim($_POST['reason']);
+
+    // 1. 과목코드 유효성 확인 및 정원 확인
+    $courseCheckQuery = "SELECT courseID, capacity, currentEnrollment FROM Course WHERE courseID = ?";
+    $stmt = $conn->prepare($courseCheckQuery);
+    $stmt->bind_param("s", $courseID);
+    $stmt->execute();
+    $courseResult = $stmt->get_result();
+    
+    if ($courseResult->num_rows === 0) {
+        echo json_encode(['success' => false, 'message' => '존재하지 않는 과목코드입니다.']);
+        exit();
+    }
+    
+    $course = $courseResult->fetch_assoc();
+    $stmt->close();
+    
+    if ($course['currentEnrollment'] < $course['capacity']) {
+        echo json_encode(['success' => false, 'message' => '정원이 다 차지 않았습니다. 수강신청 페이지에서 신청해주세요.']);
+        exit();
+    }
+
+    // 2. 이미 수강신청했는지 확인 (Enroll 테이블 확인)
+    $alreadyEnrolledQuery = "SELECT * FROM Enroll WHERE userID = ? AND courseID = ?";
+    $stmt = $conn->prepare($alreadyEnrolledQuery);
+    $stmt->bind_param("ss", $studentID, $courseID);
+    $stmt->execute();
+    $alreadyEnrolledResult = $stmt->get_result();
+    if ($alreadyEnrolledResult->num_rows > 0) {
+        echo json_encode(['success' => false, 'message' => '이미 수강신청한 과목입니다.']);
+        exit();
+    }
+    $stmt->close();
+
+    // 3. 빌넣요청 등록
+    $insertQuery = "INSERT INTO ExtraEnroll (userID, courseID, reason, extraEnrollStatus) VALUES (?, ?, ?, '대기')";
+    $stmt = $conn->prepare($insertQuery);
+    $stmt->bind_param("sss", $studentID, $courseID, $reason);
+    $success = $stmt->execute();
+    $stmt->close();
+
+    if ($success) {
+        echo json_encode(['success' => true, 'message' => '빌넣요청이 성공적으로 제출되었습니다.']);
+    } else {
+        echo json_encode(['success' => false, 'message' => '빌넣요청 중 오류가 발생했습니다. 다시 시도해주세요.']);
+    }
+    exit();
+}
+
+// 빌넣요청 취소 처리
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'cancelExtraEnroll') {
+    $courseID = trim($_POST['courseID']);
+
+    // 요청 존재 여부 확인
+    $checkQuery = "SELECT * FROM ExtraEnroll WHERE userID = ? AND courseID = ? AND extraEnrollStatus = '대기'";
+    $stmt = $conn->prepare($checkQuery);
+    $stmt->bind_param("ss", $studentID, $courseID);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows === 0) {
+        echo json_encode(['success' => false, 'message' => '취소할 요청이 존재하지 않습니다.']);
+        exit();
+    }
+    $stmt->close();
+
+    // 요청 삭제
+    $deleteQuery = "DELETE FROM ExtraEnroll WHERE userID = ? AND courseID = ?";
+    $stmt = $conn->prepare($deleteQuery);
+    $stmt->bind_param("ss", $studentID, $courseID);
+    $success = $stmt->execute();
+    $stmt->close();
+
+    if ($success) {
+        echo json_encode(['success' => true, 'message' => '빌넣요청이 취소되었습니다.']);
+    } else {
+        echo json_encode(['success' => false, 'message' => '빌넣요청 취소 중 오류가 발생했습니다. 다시 시도해주세요.']);
+    }
+    exit();
+}
+
+$studentQuery = "SELECT u.userID, u.userName, u.grade, u.lastSemesterCredits, u.userRole, 
+                        u.departmentID, d.departmentName, c.collegeName 
+                FROM User u 
+                LEFT JOIN Department d ON u.departmentID = d.departmentID
+                LEFT JOIN College c ON d.collegeID = c.collegeID
+                WHERE u.userID = ?";
+$stmt = $conn->prepare($studentQuery);
+$stmt->bind_param("s", $studentID);
+$stmt->execute();
+$studentResult = $stmt->get_result();
+$studentInfo = $studentResult->fetch_assoc();
+$stmt->close();
+
+$areaQuery = "SELECT DISTINCT area FROM Course WHERE area IS NOT NULL AND area != '' ORDER BY area";
+$areaResult = $conn->query($areaQuery);
+$areas = [];
+if ($areaResult) {
+    while ($row = $areaResult->fetch_assoc()) {
+        $areas[] = $row['area'];
+    }
+    $areaResult->free();
+}
+$areas_normal = [];
+$areas_core = [];
+foreach ($areas as $area_item) {
+    if (strpos($area_item, '(중핵)') !== false) {
+        $areas_core[] = $area_item;
+    } else {
+        $areas_normal[] = $area_item;
+    }
+}
+sort($areas_normal);
+sort($areas_core);
+$areas = array_merge($areas_normal, $areas_core);
+
+$collegesQuery = "SELECT * FROM College ORDER BY collegeName";
+$colleges = $conn->query($collegesQuery);
+$colleges_arr_for_js = [];
+if ($colleges && $colleges->num_rows > 0) {
+    $colleges_arr_for_js = $colleges->fetch_all(MYSQLI_ASSOC);
+    $colleges->data_seek(0);
+}
+
+$departmentsQuery = "SELECT d.*, c.collegeName FROM Department d 
+                     JOIN College c ON d.collegeID = c.collegeID 
+                     ORDER BY c.collegeName, d.departmentName";
+$departments = $conn->query($departmentsQuery);
+$departments_arr_for_js = [];
+if ($departments && $departments->num_rows > 0) {
+    $departments_arr_for_js = $departments->fetch_all(MYSQLI_ASSOC);
+    $departments->data_seek(0);
+}
+
+$searchResults = null;
+if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') {
+    $searchType = isset($_GET['searchType']) ? $_GET['searchType'] : 'all';
+    $baseQuery = "SELECT c.*, u.userName as professor, d.departmentName, 
+                  GROUP_CONCAT(DISTINCT CONCAT(ct.dayOfWeek, ' ', ct.startPeriod, '-', ct.endPeriod) SEPARATOR ', ') as courseTimesFormatted
+                  FROM Course c
+                  LEFT JOIN User u ON c.professorID = u.userID
+                  LEFT JOIN Department d ON c.departmentID = d.departmentID
+                  LEFT JOIN CourseTime ct ON c.courseID = ct.courseID";
+    $whereClauses = [];
+    $params = [];
+    $types = "";
+    
+    if ($searchType == 'cart') {
+        $baseQuery .= " JOIN Cart cart_table ON c.courseID = cart_table.courseID";
+        $whereClauses[] = "cart_table.userID = ?";
+        $params[] = $studentID;
+        $types .= "s";
+    } elseif ($searchType == 'area') {
+        if (!empty($_GET['detailSearch'])) {
+            $whereClauses[] = "c.area = ?";
+            $params[] = $_GET['detailSearch'];
+            $types .= "s";
+        }
+    } elseif ($searchType == 'college_department') {
+        if (!empty($_GET['detailSearch'])) {
+            $whereClauses[] = "d.collegeID = ?";
+            $params[] = $_GET['detailSearch'];
+            $types .= "i";
+        }
+        if (!empty($_GET['department'])) {
+            $whereClauses[] = "c.departmentID = ?";
+            $params[] = $_GET['department'];
+            $types .= "i";
+        }
+    }
+
+    if (!empty($_GET['keyword'])) {
+        $keyword = '%' . $_GET['keyword'] . '%';
+        $whereClauses[] = "(c.courseName LIKE ? OR u.userName LIKE ?)";
+        $params[] = $keyword;
+        $params[] = $keyword;
+        $types .= "ss";
+    }
+
+    $searchQuery = $baseQuery;
+    if (!empty($whereClauses)) {
+        $searchQuery .= " WHERE " . implode(" AND ", $whereClauses);
+    }
+    $searchQuery .= " GROUP BY c.courseID ORDER BY c.courseID";
+
+    $stmt_search = $conn->prepare($searchQuery);
+    if ($stmt_search) {
+        if (!empty($params)) {
+            $stmt_search->bind_param($types, ...$params);
+        }
+        $stmt_search->execute();
+        $searchResults = $stmt_search->get_result();
+    } else {
+        echo "Error preparing statement: " . $conn->error;
+    }
+}
+?>
+
+<!DOCTYPE html>
+<html lang="ko">
+<!-- 위의 <head>와 <body> 코드를 이어서 추가 -->
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>순천향대학교 수강신청 시스템 - 빌넣요청</title>
+    <style>
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 5px;
+            position: relative;
+        }
+
+        .modal-content h3 {
+            margin-bottom: 15px;
+        }
+
+        .modal-content label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .modal-content textarea {
+            width: 100%;
+            height: 100px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            resize: none;
+        }
+
+        .modal-content .button {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .modal-content .submitButton {
+            background-color: #00a8ff;
+            color: white;
+        }
+
+        .modal-content .submitButton:hover {
+            background-color: #0090dd;
+        }
+
+        .modal-content .closeButton {
+            background-color: #f2f2f2;
+            color: #333;
+        }
+
+        .modal-content .closeButton:hover {
+            background-color: #e0e0e0;
+        }
+
+        .close {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        * 
+        {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Malgun Gothic', sans-serif;
+        }
+
+        body {
+            display: flex;
+        }
+
+        .sidebar {
+            width: 200px;
+            background-color: #2c3e50;
+            color: white;
+            height: 100vh;
+            padding: 20px 0;
+            position: fixed;
+        }
+
+        .sidebar ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .sidebar ul li {
+            padding: 15px 20px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .sidebar ul li:hover {
+            background-color: #34495e;
+        }
+
+        .sidebar ul li.active {
+            background-color: #3498db;
+        }
+
+        .sidebar ul li a {
+            color: white;
+            text-decoration: none;
+            font-size: 16px;
+        }
+
+        .content {
+            margin-left: 220px;
+            width: calc(100% - 220px);
+            padding: 20px;
+        }
+
+        .section {
+            width: 100%;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-top: 0;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .logo img {
+            width: 200px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .studentInfo {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .logoutButton {
+            padding: 8px 15px;
+            background-color: #f2f2f2;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .logoutButton:hover {
+            background-color: #e0e0e0;
+        }
+
+        .searchSection {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border: 1px solid #eee;
+        }
+
+        .searchRow {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+
+        .searchRow label {
+            width: 120px;
+            font-size: 14px;
+            color: #555;
+        }
+
+        .searchRow select, .searchRow input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            flex: 1;
+        }
+
+        .buttonRow {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .button {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .searchButton {
+            background-color: #00a8ff;
+            color: white;
+        }
+
+        .searchButton:hover {
+            background-color: #0090dd;
+        }
+
+        .resetButton {
+            background-color: #f2f2f2;
+            color: #333;
+        }
+
+        .resetButton:hover {
+            background-color: #e0e0e0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        table caption {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-align: left;
+            color: #333;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #f2f2f2;
+            color: #333;
+            font-weight: bold;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        tr:hover {
+            background-color: #f0f7ff;
+        }
+
+        .courseType {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 3px;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .required {
+            background-color: #00a8ff;
+        }
+
+        .elective {
+            background-color: #28a745;
+        }
+
+        .registerButton {
+            padding: 5px 10px;
+            background-color: #00a8ff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .registerButton:hover {
+            background-color: #0090dd;
+        }
+
+        .deleteButton {
+            padding: 5px 10px;
+            background-color: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .deleteButton:hover {
+            background-color: #ff5252;
+        }
+
+        .disabledButton {
+            padding: 5px 10px;
+            background-color: #ccc;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            font-size: 12px;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <ul>
+            <li><a href="cart.php">예비수강신청</a></li>
+            <li><a href="enroll.php">수강신청</a></li>
+            <li class="active"><a href="extraEnroll.php">빌넣요청</a></li>
+        </ul>
+    </div>
+    <div class="content">
+        <!-- 모달 창 -->
+        <div id="extraEnrollModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal()">&times;</span>
+                <h3>빌넣요청</h3>
+                <form id="extraEnrollForm">
+                    <label for="extraEnrollReason">요청 사유</label>
+                    <textarea id="extraEnrollReason" name="reason" placeholder="빌넣요청 사유를 입력하세요 (최대 100자)" maxlength="100" required></textarea>
+                    <div class="buttonRow">
+                        <button type="button" class="button closeButton" onclick="closeModal()">취소</button>
+                        <button type="submit" class="button submitButton">제출</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="section">
+            <div class="logo">
+                <img src="https://blog.kakaocdn.net/dn/bx64Eo/btqEOZOpwoE/veAdLIDj4xKXMakWfvHRmk/img.jpg" alt="순천향대학교 로고">
+            </div>
+
+            <div class="header">
+                <div class="studentInfo">
+                    <strong><?= htmlspecialchars($studentInfo['userName']) ?></strong> 님 환영합니다
+                    <span>(학과: <?= htmlspecialchars($studentInfo['departmentName']) ?>, 학번: <?= htmlspecialchars($studentID) ?>)</span>
+                </div>
+                <a href="login.php" class="logoutButton">로그아웃</a>
+            </div>
+
+            <!-- 수강신청 검색 -->
+            <form method="get" action="<?= $_SERVER['PHP_SELF'] ?>">
+                <input type="hidden" name="perform_search" value="1"> <!-- 검색 실행 플래그 -->
+                <div class="searchSection">
+                    <div class="searchRow">
+                        <label for="searchType">검색구분</label>
+                        <select id="searchType" name="searchType">
+                            <option value="all" <?= (isset($_GET['searchType']) && $_GET['searchType'] == 'all') || !isset($_GET['searchType']) ? 'selected' : '' ?>>전체</option>
+                            <option value="cart" <?= isset($_GET['searchType']) && $_GET['searchType'] == 'cart' ? 'selected' : '' ?>>장바구니</option>
+                            <option value="area" <?= isset($_GET['searchType']) && $_GET['searchType'] == 'area' ? 'selected' : '' ?>>영역별</option>
+                            <option value="college_department" <?= isset($_GET['searchType']) && $_GET['searchType'] == 'college_department' ? 'selected' : '' ?>>단과대학/학과</option>
+                        </select>
+
+                        <label for="keyword">검색어</label>
+                        <input type="text" id="keyword" name="keyword" placeholder="과목명 또는 교수명"
+                            value="<?= isset($_GET['keyword']) ? htmlspecialchars($_GET['keyword']) : '' ?>">
+                    </div>
+
+                    <div class="searchRow">
+                        <label for="detailSearch">상세검색</label>
+                        <select id="detailSearch" name="detailSearch" disabled>
+                            <option value="">선택</option>
+                            <?php
+                            if (isset($_GET['searchType']) && isset($_GET['detailSearch']) && $_GET['detailSearch'] !== '') {
+                                $currentSearchType = $_GET['searchType'];
+                                $currentDetailSearch = $_GET['detailSearch'];
+                                if ($currentSearchType == 'area') {
+                                    foreach ($areas as $area_item) {
+                                        echo "<option value=\"".htmlspecialchars($area_item)."\" ".($currentDetailSearch == $area_item ? 'selected' : '').">".htmlspecialchars($area_item)."</option>";
+                                    }
+                                } elseif ($currentSearchType == 'college_department') {
+                                    if ($colleges && $colleges->num_rows > 0) {
+                                        $colleges->data_seek(0);
+                                        while ($college = $colleges->fetch_assoc()) {
+                                            echo "<option value=\"".$college['collegeID']."\" ".($currentDetailSearch == $college['collegeID'] ? 'selected' : '').">".htmlspecialchars($college['collegeName'])."</option>";
+                                        }
+                                    }
+                                }
+                            }
+                            ?>
+                        </select>
+
+                        <label for="department"></label>
+                        <select id="department" name="department" disabled>
+                            <option value="">선택</option>
+                            <?php
+                            if (isset($_GET['searchType']) && $_GET['searchType'] == 'college_department' && isset($_GET['department']) && $_GET['department'] !== '' && isset($_GET['detailSearch']) && $_GET['detailSearch'] !== '') {
+                                $currentDepartment = $_GET['department'];
+                                $currentCollegeForDept = $_GET['detailSearch'];
+                                if ($departments && $departments->num_rows > 0) {
+                                    $departments->data_seek(0);
+                                    while ($dept = $departments->fetch_assoc()) {
+                                        if ($dept['collegeID'] == $currentCollegeForDept) {
+                                            echo "<option value=\"".$dept['departmentID']."\" data-college=\"".$dept['collegeID']."\" ".($currentDepartment == $dept['departmentID'] ? 'selected' : '').">".htmlspecialchars($dept['departmentName'])."</option>";
+                                        }
+                                    }
+                                }
+                            }
+                            ?>
+                        </select>
+                    </div> 
+                    
+                    <div class="buttonRow">
+                        <button type="submit" class="button searchButton">조회</button>
+                        <button type="button" class="button resetButton" onclick="resetSearch()">초기화</button>
+                    </div>
+                </div>
+            </form>
+
+            <!-- 강의 목록 테이블 -->
+            <table>
+                <caption>강의 목록</caption>
+                <thead>
+                <tr>
+                    <th style="width: 40px;">No.</th>
+                    <th style="width: 80px;">이수구분</th>
+                    <th style="width: 90px;">과목코드</th>
+                    <th style="width: 120px;">교과목명</th>
+                    <th style="width: 110px;">학과</th>
+                    <th style="width: 110px;">교수명</th>
+                    <th style="width: 70px;">학점</th>
+                    <th style="width: 140px;">강의시간</th>
+                    <th style="width: 110px;">정원/신청</th>
+                    <th style="width: 110px;">빌넣요청</th>
+                </tr>
+                </thead>
+                <tbody>
+                    <?php
+                    if ($searchResults !== null && $searchResults->num_rows > 0) {
+                        $rowNum = 1;
+                        while ($course = $searchResults->fetch_assoc()) {
+                            // 이미 요청했는지 확인
+                            $isRequested = isset($extraEnrollCourses[$course['courseID']]);
+                    ?>
+                    <tr>
+                        <td><?= $rowNum++ ?></td>
+                        <td><?= htmlspecialchars($course['creditType']) ?></td>
+                        <td><?= htmlspecialchars($course['courseID']) ?></td>
+                        <td><?= htmlspecialchars($course['courseName']) ?></td>
+                        <td><?= htmlspecialchars($course['departmentName']) ?></td>
+                        <td><?= htmlspecialchars($course['professor']) ?></td>
+                        <td><?= htmlspecialchars($course['credits']) ?></td>
+                        <td><?= htmlspecialchars($course['courseTimesFormatted']) ?></td>
+                        <td><?= htmlspecialchars($course['capacity']) ?>/<?= htmlspecialchars($course['currentEnrollment']) ?></td>
+                        <td>
+                            <?php if ($isRequested) { ?>
+                                <button class="deleteButton" onclick="cancelExtraEnroll('<?= htmlspecialchars($course['courseID']) ?>')">빌넣취소</button>
+                            <?php } elseif ($course['currentEnrollment'] < $course['capacity']) { ?>
+                                <button class="disabledButton" disabled>빌넣불가</button>
+                            <?php } else { ?>
+                                <button class="registerButton" onclick="openModal('<?= htmlspecialchars($course['courseID']) ?>')">빌넣요청</button>
+                            <?php } ?>
+                        </td>
+                    </tr>
+                    <?php
+                        }
+                        if ($stmt_search) $stmt_search->close();
+                    } else if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') {
+                    ?>
+                    <tr>
+                        <td colspan="10">검색 결과가 없습니다.</td>
+                    </tr>
+                    <?php } else { ?>
+                    <tr>
+                        <td colspan="10">위에서 조회 버튼을 클릭하여 강의를 검색하세요.</td>
+                    </tr>
+                    <?php } ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+    const phpAreas = <?= json_encode($areas) ?>;
+    const phpColleges = <?= json_encode($colleges_arr_for_js) ?>;
+    const phpDepartments = <?= json_encode($departments_arr_for_js) ?>;
+
+    const searchTypeSelect = document.getElementById('searchType');
+    const detailSearchSelect = document.getElementById('detailSearch');
+    const departmentSelect = document.getElementById('department');
+    const keywordInput = document.getElementById('keyword');
+
+    function populateDetailSearch() {
+        const selectedType = searchTypeSelect.value;
+        detailSearchSelect.innerHTML = '<option value="">선택</option>';
+        departmentSelect.innerHTML = '<option value="">선택</option>';
+        departmentSelect.disabled = true;
+
+        if (selectedType === 'area') {
+            detailSearchSelect.disabled = false;
+            phpAreas.forEach(area => {
+                const option = new Option(area, area);
+                detailSearchSelect.add(option);
+            });
+        } else if (selectedType === 'college_department') {
+            detailSearchSelect.disabled = false;
+            phpColleges.forEach(college => {
+                const option = new Option(college.collegeName, college.collegeID);
+                detailSearchSelect.add(option);
+            });
+        } else {
+            detailSearchSelect.disabled = true;
+        }
+    }
+
+    function populateDepartments() {
+        const selectedCollegeID = detailSearchSelect.value;
+        departmentSelect.innerHTML = '<option value="">선택</option>';
+
+        if (searchTypeSelect.value === 'college_department' && selectedCollegeID) {
+            departmentSelect.disabled = false;
+            phpDepartments.forEach(dept => {
+                if (dept.collegeID == selectedCollegeID) {
+                    const option = new Option(dept.departmentName, dept.departmentID);
+                    departmentSelect.add(option);
+                }
+            });
+        } else {
+            departmentSelect.disabled = true;
+        }
+    }
+
+    searchTypeSelect.addEventListener('change', function() {
+        populateDetailSearch();
+        populateDepartments();
+    });
+
+    detailSearchSelect.addEventListener('change', function() {
+        if (searchTypeSelect.value === 'college_department') {
+            populateDepartments();
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        populateDetailSearch();
+        const currentDetailSearchVal = '<?= isset($_GET['detailSearch']) ? htmlspecialchars($_GET['detailSearch']) : '' ?>';
+        if (currentDetailSearchVal && !detailSearchSelect.disabled) {
+            detailSearchSelect.value = currentDetailSearchVal;
+        }
+
+        populateDepartments();
+        const currentDepartmentVal = '<?= isset($_GET['department']) ? htmlspecialchars($_GET['department']) : '' ?>';
+        if (currentDepartmentVal && !departmentSelect.disabled) {
+            departmentSelect.value = currentDepartmentVal;
+        }
+    });
+
+    function resetSearch() {
+        searchTypeSelect.value = 'all';
+        keywordInput.value = '';
+        populateDetailSearch();
+        window.location.href = window.location.pathname;
+    }
+
+    // 모달 관련 변수
+    const modal = document.getElementById('extraEnrollModal');
+    const extraEnrollForm = document.getElementById('extraEnrollForm');
+    let currentCourseID = null;
+
+    // 모달 열기
+    function openModal(courseID) {
+        currentCourseID = courseID;
+        modal.style.display = 'block';
+        document.getElementById('extraEnrollReason').value = ''; // 사유 초기화
+    }
+
+    // 모달 닫기
+    function closeModal() {
+        modal.style.display = 'none';
+        currentCourseID = null;
+    }
+
+    // 모달 외부 클릭 시 닫기
+    window.onclick = function(event) {
+        if (event.target == modal) {
+            closeModal();
+        }
+    }
+
+    // 폼 제출 처리
+    extraEnrollForm.addEventListener('submit', function(event) {
+        event.preventDefault();
+        const reason = document.getElementById('extraEnrollReason').value.trim();
+
+        if (!reason) {
+            alert('요청 사유를 입력해주세요.');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('action', 'extraEnroll');
+        formData.append('courseID', currentCourseID);
+        formData.append('reason', reason);
+
+        fetch('extraEnroll.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+            if (data.success) {
+                window.location.reload(); // 성공 시 페이지 새로고침
+            }
+            closeModal();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('요청 처리 중 오류가 발생했습니다.');
+            closeModal();
+        });
+    });
+    // 빌넣요청 취소
+    function cancelExtraEnroll(courseID) {
+        if (!confirm('빌넣요청을 취소하시겠습니까?')) {
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('action', 'cancelExtraEnroll');
+        formData.append('courseID', courseID);
+
+        fetch('extraEnroll.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+            if (data.success) {
+                window.location.reload();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('취소 처리 중 오류가 발생했습니다.');
+        });
+    }
+</script>
+</body>
+</html>
+<?php
+$conn->close();
+?>
