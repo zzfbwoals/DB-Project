@@ -199,19 +199,41 @@ $timeTable = array(); // 시간표 데이터를 저장하기 위한 배열
 // 수강신청 취소 처리
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID']) && isset($_POST['action']) && $_POST['action'] === 'cancel') {
     $deleteCourseID = $_POST['courseID'];
-    // 본인만 삭제 가능하도록 userID도 조건에 추가
-    $stmt = $conn->prepare("DELETE FROM Enroll WHERE userID = ? AND courseID = ?");
-    $stmt->bind_param("ss", $studentID, $deleteCourseID);
-    $stmt->execute();
-    $stmt->close();
-    // 강의 현재 수강신청 인원 감소
-    $stmt = $conn->prepare("UPDATE Course SET currentEnrollment = currentEnrollment - 1 WHERE courseID = ?");
-    $stmt->bind_param("s", $deleteCourseID);
-    $stmt->execute();
-    $stmt->close();
-    // 새로고침(POST-Redirect-GET 패턴)
-    header("Location: enroll.php");
-    exit();
+
+    // 트랜잭션 시작
+    $conn->begin_transaction();
+
+    try {
+        // Enroll 테이블에서 삭제
+        $stmt = $conn->prepare("DELETE FROM Enroll WHERE userID = ? AND courseID = ?");
+        $stmt->bind_param("ss", $studentID, $deleteCourseID);
+        $stmt->execute();
+        $stmt->close();
+
+        // ExtraEnroll 테이블에서 해당 데이터 삭제
+        $stmt = $conn->prepare("DELETE FROM ExtraEnroll WHERE userID = ? AND courseID = ?");
+        $stmt->bind_param("ss", $studentID, $deleteCourseID);
+        $stmt->execute();
+        $stmt->close();
+
+        // 강의 현재 수강신청 인원 감소
+        $stmt = $conn->prepare("UPDATE Course SET currentEnrollment = GREATEST(currentEnrollment - 1, 0) WHERE courseID = ?");
+        $stmt->bind_param("s", $deleteCourseID);
+        $stmt->execute();
+        $stmt->close();
+
+        // 트랜잭션 커밋
+        $conn->commit();
+
+        // 새로고침(POST-Redirect-GET 패턴)
+        header("Location: enroll.php?" . time()); // 캐시 방지
+        exit();
+    } catch (Exception $e) {
+        // 에러 발생 시 롤백
+        $conn->rollback();
+        echo "<script>alert('수강신청 취소 중 오류가 발생했습니다: " . htmlspecialchars($e->getMessage()) . "'); window.location.href='enroll.php';</script>";
+        exit();
+    }
 }
 
 // 과목코드로 수강신청 처리 및 신청 버튼 처리

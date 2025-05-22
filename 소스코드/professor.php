@@ -30,7 +30,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $stmt->bind_param("ss", $userID, $courseID);
         $stmt->execute();
         
-        // Enroll 테이블에 추가
+        // Enroll 테이블에 추가 (중복 체크)
         $checkEnroll = $conn->prepare("SELECT COUNT(*) FROM Enroll WHERE userID = ? AND courseID = ?");
         $checkEnroll->bind_param("ss", $userID, $courseID);
         $checkEnroll->execute();
@@ -44,6 +44,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $insertEnroll->execute();
             $insertEnroll->close();
         }
+        
+        // Course의 currentEnrollment 1 증가
+        $updateCourse = $conn->prepare("UPDATE Course SET currentEnrollment = currentEnrollment + 1 WHERE courseID = ?");
+        $updateCourse->bind_param("s", $courseID);
+        $updateCourse->execute();
+        $updateCourse->close();
         
         $stmt->close();
     } elseif (isset($_POST["reject"])) {
@@ -77,6 +83,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                             $insertEnroll->execute();
                             $insertEnroll->close();
                         }
+                        // Course의 currentEnrollment 1 증가
+                        $updateCourse = $conn->prepare("UPDATE Course SET currentEnrollment = currentEnrollment + 1 WHERE courseID = ?");
+                        $updateCourse->bind_param("s", $courseID);
+                        $updateCourse->execute();
+                        $updateCourse->close();
                     }
                 }
                 $stmt->bind_param($types, ...$params);
