@@ -9,6 +9,16 @@ if (!isset($_SESSION["userID"]) || $_SESSION["userRole"] !== 'professor') {
 $conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
 if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
 
+// 로그인한 유저 정보 조회
+$professorID = $_SESSION["userID"];
+$professorQuery = "SELECT userName FROM User WHERE userID = ?";
+$stmt = $conn->prepare($professorQuery);
+$stmt->bind_param("s", $professorID);
+$stmt->execute();
+$professorResult = $stmt->get_result();
+$professorInfo = $professorResult->fetch_assoc();
+$stmt->close();
+
 // 승인/거절 처리 로직
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if (isset($_POST["approve"])) {
@@ -45,13 +55,17 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     }
 }
 
-// 빌넣요청 데이터 조회
+// 해당 교수의 과목에 대한 빌넣요청만 조회
 $sql = "SELECT e.userID, e.courseID, e.reason, e.extraEnrollStatus, u.userName, c.courseName 
         FROM ExtraEnroll e
         JOIN User u ON e.userID = u.userID
         JOIN Course c ON e.courseID = c.courseID
-        WHERE e.extraEnrollStatus = '대기'";
-$result = $conn->query($sql);
+        WHERE e.extraEnrollStatus = '대기' AND c.professorID = ?";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("s", $professorID);
+$stmt->execute();
+$result = $stmt->get_result();
+$stmt->close();
 ?>
 
 <!DOCTYPE html>
@@ -225,7 +239,7 @@ $result = $conn->query($sql);
 
         <div class="header">
             <div class="professorInfo">
-                <strong>교수</strong> 님 환영합니다
+                <strong><?= htmlspecialchars($professorInfo['userName']) ?></strong> 교수님 환영합니다
             </div>
             <a href="login.php" class="logoutButton">로그아웃</a>
         </div>
