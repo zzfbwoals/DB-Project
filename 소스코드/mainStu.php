@@ -65,6 +65,19 @@ $totalCredits = 0;
 $totalCourses = 0;
 $timeTable = array(); // 시간표 데이터를 저장하기 위한 배열
 
+// 수강신청 취소 처리리
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID'])) {
+    $deleteCourseID = $_POST['courseID'];
+    // 본인만 삭제 가능하도록 userID도 조건에 추가
+    $stmt = $conn->prepare("DELETE FROM Enroll WHERE userID = ? AND courseID = ?");
+    $stmt->bind_param("ss", $studentID, $deleteCourseID);
+    $stmt->execute();
+    $stmt->close();
+    // 새로고침(POST-Redirect-GET 패턴)
+    header("Location: mainStu.php");
+    exit();
+}
+
 // 강의별 색상 생성을 위한 배열
 $courseColors = array();
 
@@ -685,9 +698,9 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                             <td><?= htmlspecialchars($course['credits']) ?></td>
                             <td><?= htmlspecialchars($timeDisplay) ?></td>
                             <td>
-                                <form method="post" action="cancelEnrollment.php" style="display:inline;">
+                                <form method="post" action="mainStu.php" style="display:inline;" onsubmit="return confirm('정말로 이 강의를 취소하시겠습니까?');">
                                     <input type="hidden" name="courseID" value="<?= $course['courseID'] ?>">
-                                    <button type="button" class="deleteButton" onclick="deleteCourse('<?= $course['courseID'] ?>')">삭제</button>
+                                    <button type="submit" class="deleteButton">삭제</button>
                                 </form>
                             </td>
                         </tr>
@@ -861,7 +874,10 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                     <td><?= htmlspecialchars($course['capacity']) ?>/<?= htmlspecialchars($course['currentEnrollment']) ?></td>
                     <td>
                         <?php if ($alreadyEnrolled) { ?>
-                            <button class="deleteButton" onclick="deleteCourse('<?= $course['courseID'] ?>')">취소</button>
+                            <form method="post" action="mainStu.php" style="display:inline;" onsubmit="return confirm('정말로 이 강의를 취소하시겠습니까?');">
+                                <input type="hidden" name="courseID" value="<?= $course['courseID'] ?>">
+                                <button type="submit" class="deleteButton">취소</button>
+                            </form>
                         <?php } else if ($course['currentEnrollment'] >= $course['capacity']) { ?>
                             <button class="registerButton" onclick="requestExtraEnroll('<?= $course['courseID'] ?>')">빌넣요청</button>
                         <?php } else { ?>
@@ -918,14 +934,6 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
             const options = departmentSelect.options;
             for (let i = 1; i < options.length; i++) {
                 options[i].style.display = '';
-            }
-        }
-        
-        // 수강신청 취소 함수
-        function deleteCourse(courseID) {
-            if (confirm('정말로 이 강의를 취소하시겠습니까?')) {
-                // 서버에 삭제 요청 보내는
-                alert('수강신청 취소 기능은 실제 구현 시 AJAX를 통해 서버에 요청하게 됩니다.');
             }
         }
     </script>
