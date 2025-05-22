@@ -210,7 +210,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID']) && isset(
     $stmt->execute();
     $stmt->close();
     // 새로고침(POST-Redirect-GET 패턴)
-    header("Location: mainStu.php");
+    header("Location: enroll.php");
     exit();
 }
 
@@ -221,10 +221,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quickEnrollCourseID']
     $result = enrollCourse($conn, $studentID, $quickCourseID, $totalCredits, $timeTable, $studentInfo);
     
     if ($result === true) {
-        echo "<script>alert('수강신청이 완료되었습니다.'); window.location.href='mainStu.php';</script>";
+        echo "<script>alert('수강신청이 완료되었습니다.'); window.location.href='enroll.php';</script>";
         exit();
     } else {
-        echo "<script>alert('$result'); window.location.href='mainStu.php';</script>";
+        echo "<script>alert('$result'); window.location.href='enroll.php';</script>";
         exit();
     }
 }
@@ -463,21 +463,58 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
             font-family: 'Malgun Gothic', sans-serif;
         }
 
-        body 
-        {
-            background-color: #f5f5f5;
+        body {
+            display: flex;
         }
 
-        .section 
-        {
-            width: 90%;
-            max-width: 1200px;
-            margin: 0 auto;
+        .sidebar {
+            width: 200px;
+            background-color: #2c3e50;
+            color: white;
+            height: 100vh;
+            padding: 20px 0;
+            position: fixed;
+        }
+
+        .sidebar ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .sidebar ul li {
+            padding: 15px 20px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .sidebar ul li:hover {
+            background-color: #34495e;
+        }
+
+        .sidebar ul li.active {
+            background-color: #3498db;
+        }
+
+        .sidebar ul li a {
+            color: white;
+            text-decoration: none;
+            font-size: 16px;
+        }
+
+        .content {
+            margin-left: 220px;
+            width: calc(100% - 220px);
+            padding: 20px;
+        }
+
+        /* 기존 .section 스타일 수정 */
+        .section {
+            width: 100%;
             background-color: white;
             padding: 20px;
             border-radius: 10px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            margin-top: 30px;
+            margin-top: 0;
             margin-bottom: 30px;
         }
 
@@ -834,307 +871,316 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
     </style>
 </head>
 <body>
-    <div class="section">
-        <div class="logo">
-            <img src="https://blog.kakaocdn.net/dn/bx64Eo/btqEOZOpwoE/veAdLIDj4xKXMakWfvHRmk/img.jpg" alt="순천향대학교 로고">
-        </div>
+    <div class="sidebar">
+        <ul>
+            <li><a href="cart.php">예비수강신청</a></li>
+            <li class="active"><a href="enroll.php">수강신청</a></li>
+            <li><a href="extraEnroll.php">빌넣요청</a></li>
+        </ul>
+    </div>
+    <div class="content">
+        <div class="section">
+            <div class="logo">
+                <img src="https://blog.kakaocdn.net/dn/bx64Eo/btqEOZOpwoE/veAdLIDj4xKXMakWfvHRmk/img.jpg" alt="순천향대학교 로고">
+            </div>
 
-        <div class="header">
-            <div class="studentInfo">
-                <strong><?= htmlspecialchars($studentInfo['userName']) ?></strong> 님 환영합니다
-                <span>(학과: <?= htmlspecialchars($studentInfo['departmentName']) ?>, 학번: <?= htmlspecialchars($studentID) ?>)</span>
+            <div class="header">
+                <div class="studentInfo">
+                    <strong><?= htmlspecialchars($studentInfo['userName']) ?></strong> 님 환영합니다
+                    <span>(학과: <?= htmlspecialchars($studentInfo['departmentName']) ?>, 학번: <?= htmlspecialchars($studentID) ?>)</span>
+                </div>
+                <a href="login.php" class="logoutButton">로그아웃</a>
             </div>
-            <a href="login.php" class="logoutButton">로그아웃</a>
-        </div>
 
-        <!-- 수강신청 현황 정보 -->
-        <div class="creditInfo">
-            <div class="creditBox">
-                <h3>현재 신청 학점</h3>
-                <p><?= $totalCredits ?> 학점</p>
+            <!-- 수강신청 현황 정보 -->
+            <div class="creditInfo">
+                <div class="creditBox">
+                    <h3>현재 신청 학점</h3>
+                    <p><?= $totalCredits ?> 학점</p>
+                </div>
+                <div class="creditBox">
+                    <h3>신청 교과목 수</h3>
+                    <p><?= $totalCourses ?> 과목</p>
+                </div>
+                <div class="creditBox">
+                    <h3>신청 가능 학점</h3>
+                    <p class="maxCredit"><?= $maxCredits ?> 학점</p>
+                </div>
             </div>
-            <div class="creditBox">
-                <h3>신청 교과목 수</h3>
-                <p><?= $totalCourses ?> 과목</p>
-            </div>
-            <div class="creditBox">
-                <h3>신청 가능 학점</h3>
-                <p class="maxCredit"><?= $maxCredits ?> 학점</p>
-            </div>
-        </div>
 
-        <!-- 수강신청 내역 및 시간표 -->
-        <!-- 수강신청 내역 및 시간표 -->
-        <div class="contentWrapper">
-            <div class="courseList">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>No.</th>
-                            <th>이수구분</th>
-                            <th>과목코드</th>
-                            <th>교과목명</th>
-                            <th>교수명</th>
-                            <th>학점</th>
-                            <th>강의시간</th>
-                            <th>관리</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php 
-                        $rowNum = 1;
-                        if ($enrolledCourses->num_rows > 0) {
-                            while ($course = $enrolledCourses->fetch_assoc()) { 
-                                // 강의 시간 포맷팅
-                                $timeSlots = [];
-                                if (isset($courseTimes[$course['courseID']])) {
-                                    foreach ($courseTimes[$course['courseID']] as $time) {
-                                        $day = isset($daysKorean[$time['dayOfWeek']]) ? $daysKorean[$time['dayOfWeek']] : $time['dayOfWeek'];
-                                        $timeSlots[] = "$day {$time['startPeriod']}-{$time['endPeriod']}";
+            <!-- 수강신청 내역 및 시간표 -->
+            <!-- 수강신청 내역 및 시간표 -->
+            <div class="contentWrapper">
+                <div class="courseList">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>No.</th>
+                                <th>이수구분</th>
+                                <th>과목코드</th>
+                                <th>교과목명</th>
+                                <th>교수명</th>
+                                <th>학점</th>
+                                <th>강의시간</th>
+                                <th>관리</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            $rowNum = 1;
+                            if ($enrolledCourses->num_rows > 0) {
+                                while ($course = $enrolledCourses->fetch_assoc()) { 
+                                    // 강의 시간 포맷팅
+                                    $timeSlots = [];
+                                    if (isset($courseTimes[$course['courseID']])) {
+                                        foreach ($courseTimes[$course['courseID']] as $time) {
+                                            $day = isset($daysKorean[$time['dayOfWeek']]) ? $daysKorean[$time['dayOfWeek']] : $time['dayOfWeek'];
+                                            $timeSlots[] = "$day {$time['startPeriod']}-{$time['endPeriod']}";
+                                        }
+                                    }
+                                    $timeDisplay = implode('/', $timeSlots);
+                            ?>
+                            <tr>
+                                <td><?= $rowNum++ ?></td>
+                                <td><?= htmlspecialchars($course['creditType']) ?></td>
+                                <td><?= htmlspecialchars($course['courseID']) ?></td>
+                                <td><?= htmlspecialchars($course['courseName']) ?></td>
+                                <td><?= htmlspecialchars($course['professor']) ?></td>
+                                <td><?= htmlspecialchars($course['credits']) ?></td>
+                                <td><?= htmlspecialchars($timeDisplay) ?></td>
+                                <td>
+                                    <form method="post" action="enroll.php" style="display:inline;" onsubmit="return confirm('정말로 이 강의를 취소하시겠습니까?');">
+                                        <input type="hidden" name="courseID" value="<?= $course['courseID'] ?>">
+                                        <input type="hidden" name="action" value="cancel">
+                                        <button type="submit" class="deleteButton">취소</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            <?php 
+                                }
+                            } else {
+                            ?>
+                            <tr>
+                                <td colspan="8">수강신청 내역이 없습니다.</td>
+                            </tr>
+                            <?php } ?>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="timeTable">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th></th>
+                                <th>Mon</th>
+                                <th>Tue</th>
+                                <th>Wed</th>
+                                <th>Thu</th>
+                                <th>Fri</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            // 시간표를 1교시부터 9교시까지 반복, 각 교시에 A와 B 추가
+                            for ($i = 1; $i <= 9; $i++) { 
+                                // A row
+                                echo "<tr>";
+                                echo "<td class='time' rowspan='2'>$i</td>";
+                                foreach (array('월', '화', '수', '목', '금') as $day) {
+                                    $dayEng = $daysEnglish[$day];
+                                    echo "<td ";
+                                    if (isset($timeTable[$day][$i]['A'])) { 
+                                        $courseID = $timeTable[$day][$i]['A']['courseID'];
+                                        echo "class='course course-$courseID' title='" . 
+                                            htmlspecialchars($timeTable[$day][$i]['A']['courseName'], ENT_QUOTES, 'UTF-8') . "'>";
+                                        echo htmlspecialchars(mb_substr($timeTable[$day][$i]['A']['courseName'], 0, 3, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+                                        if (mb_strlen($timeTable[$day][$i]['A']['courseName'], 'UTF-8') > 3) echo "...";
+                                    } else {
+                                        echo ">";
+                                    }
+                                    echo "</td>";
+                                }
+                                echo "</tr>";
+
+                                // B row
+                                echo "<tr>";
+                                foreach (array('월', '화', '수', '목', '금') as $day) {
+                                    $dayEng = $daysEnglish[$day];
+                                    echo "<td ";
+                                    if (isset($timeTable[$day][$i]['B'])) { 
+                                        $courseID = $timeTable[$day][$i]['B']['courseID'];
+                                        echo "class='course course-$courseID' title='" . 
+                                            htmlspecialchars($timeTable[$day][$i]['B']['courseName'], ENT_QUOTES, 'UTF-8') . "'>";
+                                        echo htmlspecialchars(mb_substr($timeTable[$day][$i]['B']['courseName'], 0, 3, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+                                        if (mb_strlen($timeTable[$day][$i]['B']['courseName'], 'UTF-8') > 3) echo "...";
+                                    } else {
+                                        echo ">";
+                                    }
+                                    echo "</td>";
+                                }
+                                echo "</tr>";
+                            } ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 수강신청 검색 -->
+            <form method="get" action="<?= $_SERVER['PHP_SELF'] ?>">
+                <input type="hidden" name="perform_search" value="1"> <!-- 검색 실행 플래그 -->
+                <div class="searchSection">
+                    <div class="searchRow">
+                        <label for="searchType">검색구분</label>
+                        <select id="searchType" name="searchType">
+                            <option value="all" <?= (isset($_GET['searchType']) && $_GET['searchType'] == 'all') || !isset($_GET['searchType']) ? 'selected' : '' ?>>전체</option>
+                            <option value="cart" <?= isset($_GET['searchType']) && $_GET['searchType'] == 'cart' ? 'selected' : '' ?>>장바구니</option>
+                            <option value="area" <?= isset($_GET['searchType']) && $_GET['searchType'] == 'area' ? 'selected' : '' ?>>영역별</option>
+                            <option value="college_department" <?= isset($_GET['searchType']) && $_GET['searchType'] == 'college_department' ? 'selected' : '' ?>>단과대학/학과</option>
+                        </select>
+
+                        <label for="keyword">검색어</label>
+                        <input type="text" id="keyword" name="keyword" placeholder="과목명 또는 교수명"
+                            value="<?= isset($_GET['keyword']) ? htmlspecialchars($_GET['keyword']) : '' ?>">
+                    </div>
+
+                    <div class="searchRow">
+                        <label for="detailSearch">상세검색</label>
+                        <select id="detailSearch" name="detailSearch" disabled>
+                            <option value="">선택</option>
+                            <?php
+                            // PHP에서 searchType에 따라 초기 옵션 로드 (페이지 리로드 시 선택값 유지를 위해)
+                            if (isset($_GET['searchType']) && isset($_GET['detailSearch']) && $_GET['detailSearch'] !== '') {
+                                $currentSearchType = $_GET['searchType'];
+                                $currentDetailSearch = $_GET['detailSearch'];
+                                if ($currentSearchType == 'area') {
+                                    foreach ($areas as $area_item) {
+                                        echo "<option value=\"".htmlspecialchars($area_item)."\" ".($currentDetailSearch == $area_item ? 'selected' : '').">".htmlspecialchars($area_item)."</option>";
+                                    }
+                                } elseif ($currentSearchType == 'college_department') {
+                                    if ($colleges && $colleges->num_rows > 0) {
+                                        $colleges->data_seek(0); // 포인터 초기화
+                                        while ($college = $colleges->fetch_assoc()) {
+                                            echo "<option value=\"".$college['collegeID']."\" ".($currentDetailSearch == $college['collegeID'] ? 'selected' : '').">".htmlspecialchars($college['collegeName'])."</option>";
+                                        }
                                     }
                                 }
-                                $timeDisplay = implode('/', $timeSlots);
-                        ?>
-                        <tr>
-                            <td><?= $rowNum++ ?></td>
-                            <td><?= htmlspecialchars($course['creditType']) ?></td>
-                            <td><?= htmlspecialchars($course['courseID']) ?></td>
-                            <td><?= htmlspecialchars($course['courseName']) ?></td>
-                            <td><?= htmlspecialchars($course['professor']) ?></td>
-                            <td><?= htmlspecialchars($course['credits']) ?></td>
-                            <td><?= htmlspecialchars($timeDisplay) ?></td>
-                            <td>
-                                <form method="post" action="mainStu.php" style="display:inline;" onsubmit="return confirm('정말로 이 강의를 취소하시겠습니까?');">
+                            }
+                            ?>
+                        </select>
+
+                        <label for="department"></label>
+                        <select id="department" name="department" disabled>
+                            <option value="">선택</option>
+                            <?php
+                            if (isset($_GET['searchType']) && $_GET['searchType'] == 'college_department' && isset($_GET['department']) && $_GET['department'] !== '' && isset($_GET['detailSearch']) && $_GET['detailSearch'] !== '') {
+                                $currentDepartment = $_GET['department'];
+                                $currentCollegeForDept = $_GET['detailSearch'];
+                                if ($departments && $departments->num_rows > 0) {
+                                    $departments->data_seek(0);
+                                    while ($dept = $departments->fetch_assoc()) {
+                                        if ($dept['collegeID'] == $currentCollegeForDept) {
+                                            echo "<option value=\"".$dept['departmentID']."\" data-college=\"".$dept['collegeID']."\" ".($currentDepartment == $dept['departmentID'] ? 'selected' : '').">".htmlspecialchars($dept['departmentName'])."</option>";
+                                        }
+                                    }
+                                }
+                            }
+                            ?>
+                        </select>
+                    </div> 
+                    
+                    <div class="buttonRow">
+                        <button type="submit" class="button searchButton">조회</button>
+                        <button type="button" class="button resetButton" onclick="resetSearch()">초기화</button>
+                    </div>
+                </div>
+            </form>                
+
+            <div class="notification">
+                <div style="display: flex; align-items: center;">
+                    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2IDE2IiBmaWxsPSIjOTk5Ij48cGF0aCBkPSJNOCAxQzQuMTQgMSAxIDQuMTQgMSA4QzEgMTEuODYgNC4xNCAxNSA4IDE1QzExLjg2IDE1IDE1IDExLjg2IDE1IDhDMTUgNC4xNCAxMS44NiAxIDggMU0gOCAxNkM0LjY4NiAxNiAyIDE0LjMxNCAyIDEwQzIgNS42ODYgNC42ODYgMiA4IDJDMTEuMzEzIDIgMTQgNS42ODYgMTQgMTBDMTQgMTQuMzE0IDExLjMxMyAxNiA4IDE2Ij48L3BhdGg+PHBhdGggZD0iTTcgM0g5VjlIN1YzWk0gNyAxMUg5VjEzSDdWMTFaIj48L3BhdGg+PC9zdmc+" alt="정보">
+                    실시간으로 수강신청 상태가 반영됩니다. 모든 신청은 시스템에 즉시 기록됩니다.
+                </div>
+                <div class="quickEnrollContainer">
+                    <form method="post" action="enroll.php" id="quickEnrollForm" style="display: flex; align-items: center; gap: 10px;">
+                        <input type="text" id="quickEnrollCourseID" name="quickEnrollCourseID" placeholder="과목코드 입력" required>
+                        <input type="hidden" name="action" value="quickEnroll">
+                        <button type="submit" onclick="return quickEnrollSubmit();">신청</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 강의 목록 테이블 -->
+            <table>
+                <caption>강의 목록</caption>
+                <thead>
+                <tr>
+                    <th style="width: 40px;">No.</th>
+                    <th style="width: 80px;">이수구분</th>
+                    <th style="width: 90px;">과목코드</th>
+                    <th style="width: 120px;">교과목명</th>
+                    <th style="width: 110px;">학과</th>
+                    <th style="width: 110px;">교수명</th>
+                    <th style="width: 70px;">학점</th>
+                    <th style="width: 140px;">강의시간</th>
+                    <th style="width: 110px;">정원/신청</th>
+                    <th style="width: 110px;">신청</th>
+                </tr>
+                </thead>
+                <tbody>
+                    <?php
+                    if ($searchResults !== null && $searchResults->num_rows > 0) {
+                        $rowNum = 1;
+                        while ($course = $searchResults->fetch_assoc()) {
+                            // 이미 수강신청한 강의인지 확인
+                            $alreadyEnrolled = false;
+                            if ($enrolledCourses && $enrolledCourses->num_rows > 0) {
+                                $enrolledCourses->data_seek(0);
+                                while ($enrolledCourseItem = $enrolledCourses->fetch_assoc()) {
+                                    if ($enrolledCourseItem['courseID'] == $course['courseID']) {
+                                        $alreadyEnrolled = true;
+                                        break;
+                                    }
+                                }
+                            }
+                    ?>
+                    <tr>
+                        <td><?= $rowNum++ ?></td>
+                        <td><?= htmlspecialchars($course['creditType']) ?></td>
+                        <td><?= htmlspecialchars($course['courseID']) ?></td>
+                        <td><?= htmlspecialchars($course['courseName']) ?></td>
+                        <td><?= htmlspecialchars($course['departmentName']) ?></td>
+                        <td><?= htmlspecialchars($course['professor']) ?></td>
+                        <td><?= htmlspecialchars($course['credits']) ?></td>
+                        <td><?= htmlspecialchars($course['courseTimesFormatted']) ?></td>
+                        <td><?= htmlspecialchars($course['capacity']) ?>/<?= htmlspecialchars($course['currentEnrollment']) ?></td>
+                        <td>
+                            <?php if ($alreadyEnrolled) { ?>
+                                <form method="post" action="enroll.php" style="display:inline;" onsubmit="return confirm('정말로 이 강의를 취소하시겠습니까?');">
                                     <input type="hidden" name="courseID" value="<?= $course['courseID'] ?>">
                                     <input type="hidden" name="action" value="cancel">
                                     <button type="submit" class="deleteButton">취소</button>
                                 </form>
-                            </td>
-                        </tr>
-                        <?php 
-                            }
-                        } else {
-                        ?>
-                        <tr>
-                            <td colspan="8">수강신청 내역이 없습니다.</td>
-                        </tr>
-                        <?php } ?>
-                    </tbody>
-                </table>
-            </div>
-            <div class="timeTable">
-                <table>
-                    <thead>
-                        <tr>
-                            <th></th>
-                            <th>Mon</th>
-                            <th>Tue</th>
-                            <th>Wed</th>
-                            <th>Thu</th>
-                            <th>Fri</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php 
-                        // 시간표를 1교시부터 9교시까지 반복, 각 교시에 A와 B 추가
-                        for ($i = 1; $i <= 9; $i++) { 
-                            // A row
-                            echo "<tr>";
-                            echo "<td class='time' rowspan='2'>$i</td>";
-                            foreach (array('월', '화', '수', '목', '금') as $day) {
-                                $dayEng = $daysEnglish[$day];
-                                echo "<td ";
-                                if (isset($timeTable[$day][$i]['A'])) { 
-                                    $courseID = $timeTable[$day][$i]['A']['courseID'];
-                                    echo "class='course course-$courseID' title='" . 
-                                        htmlspecialchars($timeTable[$day][$i]['A']['courseName'], ENT_QUOTES, 'UTF-8') . "'>";
-                                    echo htmlspecialchars(mb_substr($timeTable[$day][$i]['A']['courseName'], 0, 3, 'UTF-8'), ENT_QUOTES, 'UTF-8');
-                                    if (mb_strlen($timeTable[$day][$i]['A']['courseName'], 'UTF-8') > 3) echo "...";
-                                } else {
-                                    echo ">";
-                                }
-                                echo "</td>";
-                            }
-                            echo "</tr>";
-
-                            // B row
-                            echo "<tr>";
-                            foreach (array('월', '화', '수', '목', '금') as $day) {
-                                $dayEng = $daysEnglish[$day];
-                                echo "<td ";
-                                if (isset($timeTable[$day][$i]['B'])) { 
-                                    $courseID = $timeTable[$day][$i]['B']['courseID'];
-                                    echo "class='course course-$courseID' title='" . 
-                                        htmlspecialchars($timeTable[$day][$i]['B']['courseName'], ENT_QUOTES, 'UTF-8') . "'>";
-                                    echo htmlspecialchars(mb_substr($timeTable[$day][$i]['B']['courseName'], 0, 3, 'UTF-8'), ENT_QUOTES, 'UTF-8');
-                                    if (mb_strlen($timeTable[$day][$i]['B']['courseName'], 'UTF-8') > 3) echo "...";
-                                } else {
-                                    echo ">";
-                                }
-                                echo "</td>";
-                            }
-                            echo "</tr>";
-                        } ?>
-                    </tbody>
-                </table>
-            </div>
+                            <?php } else { ?>
+                                <button class="registerButton" onclick="enrollCourse('<?= htmlspecialchars($course['courseID']) ?>')">신청</button>
+                            <?php } ?>
+                        </td>
+                    </tr>
+                    <?php
+                        }
+                        if ($stmt_search) $stmt_search->close(); // 검색 결과 사용 후 닫기
+                    } else if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') {
+                    ?>
+                    <tr>
+                        <td colspan="10">검색 결과가 없습니다.</td>
+                    </tr>
+                    <?php } else { ?>
+                    <tr>
+                        <td colspan="10">위에서 조회 버튼을 클릭하여 강의를 검색하세요.</td>
+                    </tr>
+                    <?php } ?>
+                </tbody>
+            </table>
         </div>
-
-        <!-- 수강신청 검색 -->
-        <form method="get" action="<?= $_SERVER['PHP_SELF'] ?>">
-            <input type="hidden" name="perform_search" value="1"> <!-- 검색 실행 플래그 -->
-            <div class="searchSection">
-                <div class="searchRow">
-                    <label for="searchType">검색구분</label>
-                    <select id="searchType" name="searchType">
-                        <option value="all" <?= (isset($_GET['searchType']) && $_GET['searchType'] == 'all') || !isset($_GET['searchType']) ? 'selected' : '' ?>>전체</option>
-                        <option value="cart" <?= isset($_GET['searchType']) && $_GET['searchType'] == 'cart' ? 'selected' : '' ?>>장바구니</option>
-                        <option value="area" <?= isset($_GET['searchType']) && $_GET['searchType'] == 'area' ? 'selected' : '' ?>>영역별</option>
-                        <option value="college_department" <?= isset($_GET['searchType']) && $_GET['searchType'] == 'college_department' ? 'selected' : '' ?>>단과대학/학과</option>
-                    </select>
-
-                    <label for="keyword">검색어</label>
-                    <input type="text" id="keyword" name="keyword" placeholder="과목명 또는 교수명"
-                           value="<?= isset($_GET['keyword']) ? htmlspecialchars($_GET['keyword']) : '' ?>">
-                </div>
-
-                <div class="searchRow">
-                    <label for="detailSearch">상세검색</label>
-                    <select id="detailSearch" name="detailSearch" disabled>
-                        <option value="">선택</option>
-                        <?php
-                        // PHP에서 searchType에 따라 초기 옵션 로드 (페이지 리로드 시 선택값 유지를 위해)
-                        if (isset($_GET['searchType']) && isset($_GET['detailSearch']) && $_GET['detailSearch'] !== '') {
-                            $currentSearchType = $_GET['searchType'];
-                            $currentDetailSearch = $_GET['detailSearch'];
-                            if ($currentSearchType == 'area') {
-                                foreach ($areas as $area_item) {
-                                    echo "<option value=\"".htmlspecialchars($area_item)."\" ".($currentDetailSearch == $area_item ? 'selected' : '').">".htmlspecialchars($area_item)."</option>";
-                                }
-                            } elseif ($currentSearchType == 'college_department') {
-                                if ($colleges && $colleges->num_rows > 0) {
-                                    $colleges->data_seek(0); // 포인터 초기화
-                                    while ($college = $colleges->fetch_assoc()) {
-                                        echo "<option value=\"".$college['collegeID']."\" ".($currentDetailSearch == $college['collegeID'] ? 'selected' : '').">".htmlspecialchars($college['collegeName'])."</option>";
-                                    }
-                                }
-                            }
-                        }
-                        ?>
-                    </select>
-
-                    <label for="department"></label>
-                    <select id="department" name="department" disabled>
-                        <option value="">선택</option>
-                        <?php
-                        if (isset($_GET['searchType']) && $_GET['searchType'] == 'college_department' && isset($_GET['department']) && $_GET['department'] !== '' && isset($_GET['detailSearch']) && $_GET['detailSearch'] !== '') {
-                            $currentDepartment = $_GET['department'];
-                            $currentCollegeForDept = $_GET['detailSearch'];
-                            if ($departments && $departments->num_rows > 0) {
-                                $departments->data_seek(0);
-                                while ($dept = $departments->fetch_assoc()) {
-                                    if ($dept['collegeID'] == $currentCollegeForDept) {
-                                        echo "<option value=\"".$dept['departmentID']."\" data-college=\"".$dept['collegeID']."\" ".($currentDepartment == $dept['departmentID'] ? 'selected' : '').">".htmlspecialchars($dept['departmentName'])."</option>";
-                                    }
-                                }
-                            }
-                        }
-                        ?>
-                    </select>
-                </div> 
-                
-                <div class="buttonRow">
-                    <button type="submit" class="button searchButton">조회</button>
-                    <button type="button" class="button resetButton" onclick="resetSearch()">초기화</button>
-                </div>
-            </div>
-        </form>                
-
-        <div class="notification">
-            <div style="display: flex; align-items: center;">
-                <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2IDE2IiBmaWxsPSIjOTk5Ij48cGF0aCBkPSJNOCAxQzQuMTQgMSAxIDQuMTQgMSA4QzEgMTEuODYgNC4xNCAxNSA4IDE1QzExLjg2IDE1IDE1IDExLjg2IDE1IDhDMTUgNC4xNCAxMS44NiAxIDggMU0gOCAxNkM0LjY4NiAxNiAyIDE0LjMxNCAyIDEwQzIgNS42ODYgNC42ODYgMiA4IDJDMTEuMzEzIDIgMTQgNS42ODYgMTQgMTBDMTQgMTQuMzE0IDExLjMxMyAxNiA4IDE2Ij48L3BhdGg+PHBhdGggZD0iTTcgM0g5VjlIN1YzWk0gNyAxMUg5VjEzSDdWMTFaIj48L3BhdGg+PC9zdmc+" alt="정보">
-                실시간으로 수강신청 상태가 반영됩니다. 모든 신청은 시스템에 즉시 기록됩니다.
-            </div>
-            <div class="quickEnrollContainer">
-                <form method="post" action="mainStu.php" id="quickEnrollForm" style="display: flex; align-items: center; gap: 10px;">
-                    <input type="text" id="quickEnrollCourseID" name="quickEnrollCourseID" placeholder="과목코드 입력" required>
-                    <input type="hidden" name="action" value="quickEnroll">
-                    <button type="submit" onclick="return quickEnrollSubmit();">신청</button>
-                </form>
-            </div>
-        </div>
-
-        <!-- 강의 목록 테이블 -->
-        <table>
-            <caption>강의 목록</caption>
-            <thead>
-            <tr>
-                <th style="width: 40px;">No.</th>
-                <th style="width: 80px;">이수구분</th>
-                <th style="width: 90px;">과목코드</th>
-                <th style="width: 120px;">교과목명</th>
-                <th style="width: 110px;">학과</th>
-                <th style="width: 110px;">교수명</th>
-                <th style="width: 70px;">학점</th>
-                <th style="width: 140px;">강의시간</th>
-                <th style="width: 110px;">정원/신청</th>
-                <th style="width: 110px;">신청</th>
-            </tr>
-            </thead>
-            <tbody>
-                <?php
-                if ($searchResults !== null && $searchResults->num_rows > 0) {
-                    $rowNum = 1;
-                    while ($course = $searchResults->fetch_assoc()) {
-                        // 이미 수강신청한 강의인지 확인
-                        $alreadyEnrolled = false;
-                        if ($enrolledCourses && $enrolledCourses->num_rows > 0) {
-                            $enrolledCourses->data_seek(0);
-                            while ($enrolledCourseItem = $enrolledCourses->fetch_assoc()) {
-                                if ($enrolledCourseItem['courseID'] == $course['courseID']) {
-                                    $alreadyEnrolled = true;
-                                    break;
-                                }
-                            }
-                        }
-                ?>
-                <tr>
-                    <td><?= $rowNum++ ?></td>
-                    <td><?= htmlspecialchars($course['creditType']) ?></td>
-                    <td><?= htmlspecialchars($course['courseID']) ?></td>
-                    <td><?= htmlspecialchars($course['courseName']) ?></td>
-                    <td><?= htmlspecialchars($course['departmentName']) ?></td>
-                    <td><?= htmlspecialchars($course['professor']) ?></td>
-                    <td><?= htmlspecialchars($course['credits']) ?></td>
-                    <td><?= htmlspecialchars($course['courseTimesFormatted']) ?></td>
-                    <td><?= htmlspecialchars($course['capacity']) ?>/<?= htmlspecialchars($course['currentEnrollment']) ?></td>
-                    <td>
-                        <?php if ($alreadyEnrolled) { ?>
-                            <form method="post" action="mainStu.php" style="display:inline;" onsubmit="return confirm('정말로 이 강의를 취소하시겠습니까?');">
-                                <input type="hidden" name="courseID" value="<?= $course['courseID'] ?>">
-                                <input type="hidden" name="action" value="cancel">
-                                <button type="submit" class="deleteButton">취소</button>
-                            </form>
-                        <?php } else { ?>
-                            <button class="registerButton" onclick="enrollCourse('<?= htmlspecialchars($course['courseID']) ?>')">신청</button>
-                        <?php } ?>
-                    </td>
-                </tr>
-                <?php
-                    }
-                    if ($stmt_search) $stmt_search->close(); // 검색 결과 사용 후 닫기
-                } else if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') {
-                ?>
-                <tr>
-                    <td colspan="10">검색 결과가 없습니다.</td>
-                </tr>
-                <?php } else { ?>
-                <tr>
-                    <td colspan="10">위에서 조회 버튼을 클릭하여 강의를 검색하세요.</td>
-                </tr>
-                <?php } ?>
-            </tbody>
-        </table>
     </div>
 
 <script>

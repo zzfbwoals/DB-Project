@@ -39,11 +39,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
             $_SESSION['userRole'] = $row['userRole'];
 
             if ($row['userRole'] === 'student') 
-                header("Location: mainStu.php");
+                header("Location: enroll.php");
             else if ($row['userRole'] === 'professor') 
-                header("Location: mainPro.php");
+                header("Location: professor.php");
             else if ($row['userRole'] === 'admin') 
-                header("Location: mainAdmin.php");
+                header("Location: admin.php");
             else 
             {
                 echo "<script>alert('알 수 없는 사용자 유형입니다.'); history.back();</script>";
