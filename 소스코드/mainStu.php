@@ -1,4 +1,6 @@
 <?php
+header('Content-Type: text/html; charset=UTF-8'); // UTF-8 인코딩 설정
+
 session_start();
 
 // 사용자가 로그인되어 있고 학생인지 확인
@@ -12,6 +14,7 @@ if (!isset($_SESSION["userID"]) || $_SESSION["userRole"] !== 'student')
 // DB 연결
 $conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
 if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
+$conn->set_charset("utf8");
 
 // 학생 정보 가져오기
 $studentID = $_SESSION["userID"];
@@ -704,9 +707,10 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                                 $dayEng = $daysEnglish[$day];
                                 echo "<td ";
                                 if (isset($timeTable[$day][$i]['A'])) { 
-                                    echo "class='course' title='" . htmlspecialchars($timeTable[$day][$i]['A']['courseName']) . "'>";
-                                    echo htmlspecialchars(substr($timeTable[$day][$i]['A']['courseName'], 0, 8));
-                                    if (strlen($timeTable[$day][$i]['A']['courseName']) > 8) echo "...";
+                                    echo "class='course' title='" . 
+                                        htmlspecialchars($timeTable[$day][$i]['A']['courseName'], ENT_QUOTES, 'UTF-8') . "'>";
+                                    echo htmlspecialchars(mb_substr($timeTable[$day][$i]['A']['courseName'], 0, 3, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+                                    if (mb_strlen($timeTable[$day][$i]['A']['courseName']) > 3) echo "...";
                                 } else {
                                     echo ">";
                                 }
@@ -720,9 +724,10 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                                 $dayEng = $daysEnglish[$day];
                                 echo "<td ";
                                 if (isset($timeTable[$day][$i]['B'])) { 
-                                    echo "class='course' title='" . htmlspecialchars($timeTable[$day][$i]['B']['courseName']) . "'>";
-                                    echo htmlspecialchars(substr($timeTable[$day][$i]['B']['courseName'], 0, 8));
-                                    if (strlen($timeTable[$day][$i]['B']['courseName']) > 8) echo "...";
+                                    echo "class='course' title='" . 
+                                        htmlspecialchars($timeTable[$day][$i]['B']['courseName'], ENT_QUOTES, 'UTF-8') . "'>";
+                                    echo htmlspecialchars(mb_substr($timeTable[$day][$i]['B']['courseName'], 0, 3, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+                                    if (mb_strlen($timeTable[$day][$i]['B']['courseName']) > 3) echo "...";
                                 } else {
                                     echo ">";
                                 }
@@ -764,7 +769,7 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                     <select id="department" name="department">
                         <option value="">학과 선택</option>
                         <?php 
-                        // Reset departments result pointer
+                        // 학과 드롭다운을 단과대학에 따라 필터링
                         $departments->data_seek(0);
                         while ($department = $departments->fetch_assoc()) { 
                         ?>
