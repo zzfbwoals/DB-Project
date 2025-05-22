@@ -23,9 +23,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
         {
 
             // 관리자 승인 확인
-            if ($row['adminApproval'] !== '승인') 
+            if ($row['adminApproval'] === '대기') 
             {
                 echo "<script>alert('관리자의 승인이 아직 완료되지 않았습니다.'); history.back();</script>";
+                exit();
+            }
+            else if ($row['adminApproval'] === '거절') 
+            {
+                echo "<script>alert('관리자에 승인이 거절되었습니다.'); history.back();</script>";
                 exit();
             }
 

@@ -94,7 +94,7 @@ if ($enrolledCourses->num_rows > 0) {
                         ];
                     }
                 } else {
-                    // A/B가 명시된 경우: startAB에서 endAB까지 표시, 중간 교시는 A와 B 모두
+                    // A/B가 명시된 경우: startAB에서 endAB까지 표시
                     for ($period = $startNum; $period <= $endNum; $period++) {
                         if ($period == $startNum) {
                             // 시작 교시: startAB에 따라 A 또는 B 시작
@@ -120,6 +120,13 @@ if ($enrolledCourses->num_rows > 0) {
                             }
                             if ($endAB == 'B' || $endAB == '') {
                                 $timeTable[$day][$period]['B'] = [
+                                    'courseName' => $course['courseName'],
+                                    'courseID' => $course['courseID']
+                                ];
+                            }
+                            // 종료 교시에서도 A를 포함 (B-B 구간에서 중간 교시처럼 처리)
+                            if ($endAB == 'B' && $startAB == 'B' && $period > $startNum) {
+                                $timeTable[$day][$period]['A'] = [
                                     'courseName' => $course['courseName'],
                                     'courseID' => $course['courseID']
                                 ];
