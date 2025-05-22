@@ -204,6 +204,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID']) && isset(
     $stmt->bind_param("ss", $studentID, $deleteCourseID);
     $stmt->execute();
     $stmt->close();
+    // 강의 현재 수강신청 인원 감소
+    $stmt = $conn->prepare("UPDATE Course SET currentEnrollment = currentEnrollment - 1 WHERE courseID = ?");
+    $stmt->bind_param("s", $deleteCourseID);
+    $stmt->execute();
+    $stmt->close();
     // 새로고침(POST-Redirect-GET 패턴)
     header("Location: mainStu.php");
     exit();
@@ -1110,8 +1115,6 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
                                 <input type="hidden" name="action" value="cancel">
                                 <button type="submit" class="deleteButton">취소</button>
                             </form>
-                        <?php } else if ($course['currentEnrollment'] >= $course['capacity']) { ?>
-                            <button class="registerButton" onclick="requestExtraEnroll('<?= $course['courseID'] ?>')">빌넣요청</button>
                         <?php } else { ?>
                             <button class="registerButton" onclick="enrollCourse('<?= htmlspecialchars($course['courseID']) ?>')">신청</button>
                         <?php } ?>
@@ -1233,10 +1236,6 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
             return false;
         }
 
-        if (!confirm(`과목코드 ${courseID}로 수강신청하시겠습니까?`)) {
-            return false;
-        }
-
         // 폼의 값을 설정
         courseIDInput.value = courseID;
         actionInput.value = actionType;
@@ -1253,11 +1252,6 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
     // 신청 버튼으로 수강신청
     function enrollCourse(courseID) {
         submitEnroll(courseID, 'enroll');
-    }
-
-    // 빌넣 요청 (미구현)
-    function requestExtraEnroll(courseID) {
-        alert(`빌넣 요청 기능은 아직 구현되지 않았습니다. 과목코드: ${courseID}`);
     }
 </script>
 </body>
