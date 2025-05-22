@@ -23,9 +23,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
         {
 
             // 관리자 승인 확인
-            if ($row['adminApproval'] !== '승인') 
+            if ($row['adminApproval'] === '대기') 
             {
                 echo "<script>alert('관리자의 승인이 아직 완료되지 않았습니다.'); history.back();</script>";
+                exit();
+            }
+            else if ($row['adminApproval'] === '거절') 
+            {
+                echo "<script>alert('관리자에 승인이 거절되었습니다.'); history.back();</script>";
                 exit();
             }
 
@@ -34,11 +39,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
             $_SESSION['userRole'] = $row['userRole'];
 
             if ($row['userRole'] === 'student') 
-                header("Location: mainStu.php");
+                header("Location: enroll.php");
             else if ($row['userRole'] === 'professor') 
-                header("Location: mainPro.php");
+                header("Location: professor.php");
             else if ($row['userRole'] === 'admin') 
-                header("Location: mainAdmin.php");
+                header("Location: admin.php");
             else 
             {
                 echo "<script>alert('알 수 없는 사용자 유형입니다.'); history.back();</script>";

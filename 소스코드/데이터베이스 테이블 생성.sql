@@ -56,7 +56,6 @@ CREATE TABLE Course (
 CREATE TABLE CourseTime (
     courseTimeID INT AUTO_INCREMENT PRIMARY KEY, -- 강의시간표 ID
     courseID VARCHAR(5),                         -- 강의번호
-    courseTime INT,                              -- 강의시간
     dayOfWeek VARCHAR(5),                        -- 요일
     startPeriod VARCHAR(5),                      -- 시작시간
     endPeriod VARCHAR(5),                        -- 종료시간
@@ -84,7 +83,7 @@ CREATE TABLE ExtraEnroll (
     extraEnrollID INT AUTO_INCREMENT PRIMARY KEY, -- 빌넣 요청 ID
     userID VARCHAR(20),                           -- 학번
     courseID VARCHAR(5),                          -- 강의번호
-    reason TEXT,                                  -- 사유
+    reason VARCHAR(100),                          -- 사유
     extraEnrollStatus VARCHAR(10) DEFAULT '대기', -- 빌넣 요청 상태
     FOREIGN KEY (userID) REFERENCES User(userID)
         ON DELETE CASCADE
