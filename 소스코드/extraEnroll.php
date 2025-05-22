@@ -11,6 +11,83 @@ $conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
 if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
 $conn->set_charset("utf8");
 
+// 빌넣요청 처리
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'extraEnroll') {
+    $courseID = trim($_POST['courseID']);
+    $reason = trim($_POST['reason']);
+    $studentID = $_SESSION["userID"];
+
+    // 1. 과목코드 유효성 확인 및 정원 확인
+    $courseCheckQuery = "SELECT courseID, capacity, currentEnrollment FROM Course WHERE courseID = ?";
+    $stmt = $conn->prepare($courseCheckQuery);
+    $stmt->bind_param("s", $courseID);
+    $stmt->execute();
+    $courseResult = $stmt->get_result();
+    
+    if ($courseResult->num_rows === 0) {
+        echo json_encode(['success' => false, 'message' => '존재하지 않는 과목코드입니다.']);
+        exit();
+    }
+    
+    $course = $courseResult->fetch_assoc();
+    $stmt->close();
+    
+    if ($course['currentEnrollment'] < $course['capacity']) {
+        echo json_encode(['success' => false, 'message' => '정원이 다 차지 않았습니다. 수강신청 페이지에서 신청해주세요.']);
+        exit();
+    }
+
+    // 2. 이미 요청했는지 확인
+    $alreadyRequestedQuery = "SELECT * FROM ExtraEnroll WHERE userID = ? AND courseID = ? AND extraEnrollStatus = '대기'";
+    $stmt = $conn->prepare($alreadyRequestedQuery);
+    $stmt->bind_param("ss", $studentID, $courseID);
+    $stmt->execute();
+    $alreadyRequestedResult = $stmt->get_result();
+    if ($alreadyRequestedResult->num_rows > 0) {
+        echo json_encode(['success' => false, 'message' => '이미 요청 중인 과목입니다.']);
+        exit();
+    }
+    $stmt->close();
+
+    // 3. 이미 수강신청했는지 확인 (Enroll 테이블 확인)
+    $alreadyEnrolledQuery = "SELECT * FROM Enroll WHERE userID = ? AND courseID = ?";
+    $stmt = $conn->prepare($alreadyEnrolledQuery);
+    $stmt->bind_param("ss", $studentID, $courseID);
+    $stmt->execute();
+    $alreadyEnrolledResult = $stmt->get_result();
+    if ($alreadyEnrolledResult->num_rows > 0) {
+        echo json_encode(['success' => false, 'message' => '이미 수강신청한 과목입니다.']);
+        exit();
+    }
+    $stmt->close();
+
+    // 4. 빌넣요청 등록
+    $insertQuery = "INSERT INTO ExtraEnroll (userID, courseID, reason, extraEnrollStatus) VALUES (?, ?, ?, '대기')";
+    $stmt = $conn->prepare($insertQuery);
+    $stmt->bind_param("sss", $studentID, $courseID, $reason);
+    $success = $stmt->execute();
+    $stmt->close();
+
+    if ($success) {
+        echo json_encode(['success' => true, 'message' => '빌넣요청이 성공적으로 제출되었습니다.']);
+    } else {
+        echo json_encode(['success' => false, 'message' => '빌넣요청 중 오류가 발생했습니다. 다시 시도해주세요.']);
+    }
+    exit();
+}
+
+// 검색 결과 조회 시 이미 요청한 강의인지 확인하기 위해 ExtraEnroll 데이터 가져오기
+$extraEnrollQuery = "SELECT courseID, extraEnrollStatus FROM ExtraEnroll WHERE userID = ? AND extraEnrollStatus = '대기'";
+$stmt = $conn->prepare($extraEnrollQuery);
+$stmt->bind_param("s", $studentID);
+$stmt->execute();
+$extraEnrollResult = $stmt->get_result();
+$extraEnrollCourses = [];
+while ($row = $extraEnrollResult->fetch_assoc()) {
+    $extraEnrollCourses[$row['courseID']] = $row['extraEnrollStatus'];
+}
+$stmt->close();
+
 $studentID = $_SESSION["userID"];
 $studentQuery = "SELECT u.userID, u.userName, u.grade, u.lastSemesterCredits, u.userRole, 
                         u.departmentID, d.departmentName, c.collegeName 
@@ -140,6 +217,81 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>순천향대학교 수강신청 시스템 - 빌넣요청</title>
     <style>
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 5px;
+            position: relative;
+        }
+
+        .modal-content h3 {
+            margin-bottom: 15px;
+        }
+
+        .modal-content label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .modal-content textarea {
+            width: 100%;
+            height: 100px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            resize: none;
+        }
+
+        .modal-content .button {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .modal-content .submitButton {
+            background-color: #00a8ff;
+            color: white;
+        }
+
+        .modal-content .submitButton:hover {
+            background-color: #0090dd;
+        }
+
+        .modal-content .closeButton {
+            background-color: #f2f2f2;
+            color: #333;
+        }
+
+        .modal-content .closeButton:hover {
+            background-color: #e0e0e0;
+        }
+
+        .close {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 24px;
+            cursor: pointer;
+        }
         * 
         {
             margin: 0;
@@ -399,6 +551,21 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') {
         </ul>
     </div>
     <div class="content">
+        <!-- 모달 창 -->
+        <div id="extraEnrollModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal()">&times;</span>
+                <h3>빌넣요청</h3>
+                <form id="extraEnrollForm">
+                    <label for="extraEnrollReason">요청 사유</label>
+                    <textarea id="extraEnrollReason" name="reason" placeholder="빌넣요청 사유를 입력하세요 (최대 100자)" maxlength="100" required></textarea>
+                    <div class="buttonRow">
+                        <button type="button" class="button closeButton" onclick="closeModal()">취소</button>
+                        <button type="submit" class="button submitButton">제출</button>
+                    </div>
+                </form>
+            </div>
+        </div>
         <div class="section">
             <div class="logo">
                 <img src="https://blog.kakaocdn.net/dn/bx64Eo/btqEOZOpwoE/veAdLIDj4xKXMakWfvHRmk/img.jpg" alt="순천향대학교 로고">
@@ -503,6 +670,8 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') {
                     if ($searchResults !== null && $searchResults->num_rows > 0) {
                         $rowNum = 1;
                         while ($course = $searchResults->fetch_assoc()) {
+                            // 이미 요청했는지 확인
+                            $isRequested = isset($extraEnrollCourses[$course['courseID']]);
                     ?>
                     <tr>
                         <td><?= $rowNum++ ?></td>
@@ -515,10 +684,12 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') {
                         <td><?= htmlspecialchars($course['courseTimesFormatted']) ?></td>
                         <td><?= htmlspecialchars($course['capacity']) ?>/<?= htmlspecialchars($course['currentEnrollment']) ?></td>
                         <td>
-                            <?php if ($course['currentEnrollment'] < $course['capacity']) { ?>
+                            <?php if ($isRequested) { ?>
+                                <button class="disabledButton" disabled>요청됨</button>
+                            <?php } elseif ($course['currentEnrollment'] < $course['capacity']) { ?>
                                 <button class="disabledButton" disabled>빌넣불가</button>
                             <?php } else { ?>
-                                <button class="registerButton" onclick="alert('빌넣요청 기능은 현재 구현되지 않았습니다.');">빌넣요청</button>
+                                <button class="registerButton" onclick="openModal('<?= htmlspecialchars($course['courseID']) ?>')">빌넣요청</button>
                             <?php } ?>
                         </td>
                     </tr>
@@ -621,6 +792,65 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') {
         populateDetailSearch();
         window.location.href = window.location.pathname;
     }
+
+    // 모달 관련 변수
+    const modal = document.getElementById('extraEnrollModal');
+    const extraEnrollForm = document.getElementById('extraEnrollForm');
+    let currentCourseID = null;
+
+    // 모달 열기
+    function openModal(courseID) {
+        currentCourseID = courseID;
+        modal.style.display = 'block';
+        document.getElementById('extraEnrollReason').value = ''; // 사유 초기화
+    }
+
+    // 모달 닫기
+    function closeModal() {
+        modal.style.display = 'none';
+        currentCourseID = null;
+    }
+
+    // 모달 외부 클릭 시 닫기
+    window.onclick = function(event) {
+        if (event.target == modal) {
+            closeModal();
+        }
+    }
+
+    // 폼 제출 처리
+    extraEnrollForm.addEventListener('submit', function(event) {
+        event.preventDefault();
+        const reason = document.getElementById('extraEnrollReason').value.trim();
+
+        if (!reason) {
+            alert('요청 사유를 입력해주세요.');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('action', 'extraEnroll');
+        formData.append('courseID', currentCourseID);
+        formData.append('reason', reason);
+
+        fetch('extraEnroll.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+            if (data.success) {
+                window.location.reload(); // 성공 시 페이지 새로고침
+            }
+            closeModal();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('요청 처리 중 오류가 발생했습니다.');
+            closeModal();
+        });
+    });
 </script>
 </body>
 </html>
