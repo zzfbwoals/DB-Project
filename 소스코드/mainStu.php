@@ -42,7 +42,7 @@ if ($areaResult) {
     }
     $areaResult->free();
 }
-// (중핵) 하단으로 정렬 ---
+// (중핵) 하단으로 정렬
 $areas_normal = [];
 $areas_core = [];
 foreach ($areas as $area_item) {
@@ -91,7 +91,7 @@ $totalCourses = 0;
 $timeTable = array(); // 시간표 데이터를 저장하기 위한 배열
 
 // 수강신청 취소 처리
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID']) && isset($_POST['action']) && $_POST['action'] === 'cancel') {
     $deleteCourseID = $_POST['courseID'];
     // 본인만 삭제 가능하도록 userID도 조건에 추가
     $stmt = $conn->prepare("DELETE FROM Enroll WHERE userID = ? AND courseID = ?");
@@ -101,6 +101,125 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID'])) {
     // 새로고침(POST-Redirect-GET 패턴)
     header("Location: mainStu.php");
     exit();
+}
+
+// 과목코드로 수강신청 처리
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quickEnrollCourseID']) && isset($_POST['action']) && $_POST['action'] === 'quickEnroll') {
+    $quickCourseID = trim($_POST['quickEnrollCourseID']);
+    
+    // 1. 과목코드 유효성 확인
+    $courseCheckQuery = "SELECT courseID, credits, capacity, currentEnrollment FROM Course WHERE courseID = ?";
+    $stmt = $conn->prepare($courseCheckQuery);
+    $stmt->bind_param("s", $quickCourseID);
+    $stmt->execute();
+    $courseResult = $stmt->get_result();
+    
+    if ($courseResult->num_rows === 0) {
+        // 과목코드가 존재하지 않음
+        echo "<script>alert('존재하지 않는 과목코드입니다.'); window.location.href='mainStu.php';</script>";
+        $stmt->close();
+        exit();
+    }
+    
+    $course = $courseResult->fetch_assoc();
+    $stmt->close();
+    
+    // 2. 이미 수강신청했는지 확인
+    $alreadyEnrolledQuery = "SELECT * FROM Enroll WHERE userID = ? AND courseID = ?";
+    $stmt = $conn->prepare($alreadyEnrolledQuery);
+    $stmt->bind_param("ss", $studentID, $quickCourseID);
+    $stmt->execute();
+    $alreadyEnrolledResult = $stmt->get_result();
+    if ($alreadyEnrolledResult->num_rows > 0) {
+        echo "<script>alert('이미 수강신청한 과목입니다.'); window.location.href='mainStu.php';</script>";
+        $stmt->close();
+        exit();
+    }
+    $stmt->close();
+    
+    // 3. 정원 확인
+    if ($course['currentEnrollment'] >= $course['capacity']) {
+        echo "<script>alert('정원이 가득 찼습니다. 빌넣 요청을 이용해주세요.'); window.location.href='mainStu.php';</script>";
+        exit();
+    }
+    
+    // 4. 학점 초과 확인
+    $newTotalCredits = $totalCredits + $course['credits'];
+    $maxCredits = ($studentInfo['lastSemesterCredits'] >= 3.0) ? 19 : 18;
+    if ($newTotalCredits > $maxCredits) {
+        echo "<script>alert('최대 신청 가능 학점을 초과했습니다. (최대: $maxCredits 학점)'); window.location.href='mainStu.php';</script>";
+        exit();
+    }
+    
+    // 5. 시간표 충돌 확인
+    $newCourseTimesQuery = "SELECT dayOfWeek, startPeriod, endPeriod FROM CourseTime WHERE courseID = ?";
+    $stmt = $conn->prepare($newCourseTimesQuery);
+    $stmt->bind_param("s", $quickCourseID);
+    $stmt->execute();
+    $newCourseTimesResult = $stmt->get_result();
+    $newCourseTimes = [];
+    while ($time = $newCourseTimesResult->fetch_assoc()) {
+        $newCourseTimes[] = $time;
+    }
+    $stmt->close();
+    
+    $conflict = false;
+    foreach ($newCourseTimes as $newTime) {
+        $day = $newTime['dayOfWeek'];
+        $start = (int)preg_replace('/[AB]/', '', $newTime['startPeriod']);
+        $end = (int)preg_replace('/[AB]/', '', $newTime['endPeriod']);
+        $startAB = preg_match('/[AB]/', $newTime['startPeriod']) ? substr($newTime['startPeriod'], -1) : '';
+        $endAB = preg_match('/[AB]/', $newTime['endPeriod']) ? substr($newTime['endPeriod'], -1) : '';
+        
+        for ($period = $start; $period <= $end; $period++) {
+            $slotsToCheck = [];
+            if ($startAB === '' && $endAB === '') {
+                $slotsToCheck = ['A', 'B'];
+            } elseif ($startAB === 'A' && $endAB === 'A') {
+                $slotsToCheck = ['A'];
+            } elseif ($startAB === 'B' && $endAB === 'B') {
+                $slotsToCheck = ['B'];
+            } elseif ($startAB === 'A' && $endAB === 'B') {
+                $slotsToCheck = ($period === $start) ? ['A'] : (($period === $end) ? ['B'] : ['A', 'B']);
+            } elseif ($startAB === 'B' && $endAB === 'A') {
+                $slotsToCheck = ($period === $start) ? ['B'] : (($period === $end) ? ['A'] : ['A', 'B']);
+            }
+            
+            foreach ($slotsToCheck as $slot) {
+                if (isset($timeTable[$day][$period][$slot])) {
+                    $conflict = true;
+                    break 3; // 충돌 발견 시 모든 루프 탈출
+                }
+            }
+        }
+    }
+    
+    if ($conflict) {
+        echo "<script>alert('시간표가 충돌합니다. 다른 강의를 선택해주세요.'); window.location.href='mainStu.php';</script>";
+        exit();
+    }
+    
+    // 6. 수강신청 등록
+    $enrollQuery = "INSERT INTO Enroll (userID, courseID) VALUES (?, ?)";
+    $stmt = $conn->prepare($enrollQuery);
+    $stmt->bind_param("ss", $studentID, $quickCourseID);
+    $enrollSuccess = $stmt->execute();
+    $stmt->close();
+    
+    if ($enrollSuccess) {
+        // currentEnrollment 증가
+        $updateEnrollmentQuery = "UPDATE Course SET currentEnrollment = currentEnrollment + 1 WHERE courseID = ?";
+        $stmt = $conn->prepare($updateEnrollmentQuery);
+        $stmt->bind_param("s", $quickCourseID);
+        $stmt->execute();
+        $stmt->close();
+        
+        echo "<script>alert('수강신청이 완료되었습니다.'); window.location.href='mainStu.php';</script>";
+        exit();
+    } else {
+        echo "<script>alert('수강신청 중 오류가 발생했습니다. 다시 시도해주세요.'); window.location.href='mainStu.php';</script>";
+        exit();
+    }
 }
 
 // 강의별 색상 생성을 위한 배열
@@ -672,12 +791,45 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
             display: flex;
             align-items: center;
             margin-bottom: 10px;
+            justify-content: space-between; /* 문구와 입력창/버튼을 양쪽으로 배치 */
         }
 
         .notification img 
         {
             width: 16px;
             margin-right: 5px;
+        }
+
+        .quickEnrollContainer 
+        {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .quickEnrollContainer input 
+        {
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            width: 120px;
+            font-size: 12px;
+        }
+
+        .quickEnrollContainer button 
+        {
+            padding: 5px 10px;
+            background-color: #00a8ff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .quickEnrollContainer button:hover 
+        {
+            background-color: #0090dd;
         }
     </style>
 </head>
@@ -753,6 +905,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
                             <td>
                                 <form method="post" action="mainStu.php" style="display:inline;" onsubmit="return confirm('정말로 이 강의를 취소하시겠습니까?');">
                                     <input type="hidden" name="courseID" value="<?= $course['courseID'] ?>">
+                                    <input type="hidden" name="action" value="cancel">
                                     <button type="submit" class="deleteButton">취소</button>
                                 </form>
                             </td>
@@ -850,7 +1003,6 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
                         <option value="">선택</option>
                         <?php
                         // PHP에서 searchType에 따라 초기 옵션 로드 (페이지 리로드 시 선택값 유지를 위해)
-                        // JS에서 주로 처리하므로 여기서는 비워두거나, GET 파라미터가 있을 때만 채울 수 있음
                         if (isset($_GET['searchType']) && isset($_GET['detailSearch']) && $_GET['detailSearch'] !== '') {
                             $currentSearchType = $_GET['searchType'];
                             $currentDetailSearch = $_GET['detailSearch'];
@@ -873,7 +1025,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
                     <label for="department"></label>
                     <select id="department" name="department" disabled>
                         <option value="">선택</option>
-                         <?php
+                        <?php
                         if (isset($_GET['searchType']) && $_GET['searchType'] == 'college_department' && isset($_GET['department']) && $_GET['department'] !== '' && isset($_GET['detailSearch']) && $_GET['detailSearch'] !== '') {
                             $currentDepartment = $_GET['department'];
                             $currentCollegeForDept = $_GET['detailSearch'];
@@ -881,7 +1033,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
                                 $departments->data_seek(0);
                                 while ($dept = $departments->fetch_assoc()) {
                                     if ($dept['collegeID'] == $currentCollegeForDept) {
-                                         echo "<option value=\"".$dept['departmentID']."\" data-college=\"".$dept['collegeID']."\" ".($currentDepartment == $dept['departmentID'] ? 'selected' : '').">".htmlspecialchars($dept['departmentName'])."</option>";
+                                        echo "<option value=\"".$dept['departmentID']."\" data-college=\"".$dept['collegeID']."\" ".($currentDepartment == $dept['departmentID'] ? 'selected' : '').">".htmlspecialchars($dept['departmentName'])."</option>";
                                     }
                                 }
                             }
@@ -898,11 +1050,20 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
         </form>                
 
         <div class="notification">
-            <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2IDE2IiBmaWxsPSIjOTk5Ij48cGF0aCBkPSJNOCAxQzQuMTQgMSAxIDQuMTQgMSA4QzEgMTEuODYgNC4xNCAxNSA4IDE1QzExLjg2IDE1IDE1IDExLjg2IDE1IDhDMTUgNC4xNCAxMS44NiAxIDggMU0gOCAxNkM0LjY4NiAxNiAyIDE0LjMxNCAyIDEwQzIgNS42ODYgNC42ODYgMiA4IDJDMTEuMzEzIDIgMTQgNS42ODYgMTQgMTBDMTQgMTQuMzE0IDExLjMxMyAxNiA4IDE2Ij48L3BhdGg+PHBhdGggZD0iTTcgM0g9VjlIN1YzWk0gNyAxMUg9VjEzSDdWMTFaIj48L3BhdGg+PC9zdmc+" alt="정보">
-            실시간으로 수강신청 상태가 반영됩니다. 모든 신청은 시스템에 즉시 기록됩니다.
+            <div style="display: flex; align-items: center;">
+                <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2IDE2IiBmaWxsPSIjOTk5Ij48cGF0aCBkPSJNOCAxQzQuMTQgMSAxIDQuMTQgMSA4QzEgMTEuODYgNC4xNCAxNSA4IDE1QzExLjg2IDE1IDE1IDExLjg2IDE1IDhDMTUgNC4xNCAxMS44NiAxIDggMU0gOCAxNkM0LjY4NiAxNiAyIDE0LjMxNCAyIDEwQzIgNS42ODYgNC42ODYgMiA4IDJDMTEuMzEzIDIgMTQgNS42ODYgMTQgMTBDMTQgMTQuMzE0IDExLjMxMyAxNiA4IDE2Ij48L3BhdGg+PHBhdGggZD0iTTcgM0g9VjlIN1YzWk0gNyAxMUg9VjEzSDdWMTFaIj48L3BhdGg+PC9zdmc+" alt="정보">
+                실시간으로 수강신청 상태가 반영됩니다. 모든 신청은 시스템에 즉시 기록됩니다.
+            </div>
+            <div class="quickEnrollContainer">
+                <form method="post" action="mainStu.php" id="quickEnrollForm" style="display: flex; align-items: center; gap: 10px;">
+                    <input type="text" id="quickEnrollCourseID" name="quickEnrollCourseID" placeholder="과목코드 입력" required>
+                    <input type="hidden" name="action" value="quickEnroll">
+                    <button type="submit" onclick="return quickEnrollSubmit();">신청</button>
+                </form>
+            </div>
         </div>
 
-        <!-- ... (강의 목록 테이블 표시 부분) ... -->
+        <!-- 강의 목록 테이블 -->
         <table>
             <caption>강의 목록</caption>
             <thead>
@@ -914,7 +1075,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
                 <th style="width: 110px;">학과</th>
                 <th style="width: 110px;">교수명</th>
                 <th style="width: 70px;">학점</th>
-                <th style="width: 140px;">강의시간</th> <!-- 수정됨 -->
+                <th style="width: 140px;">강의시간</th>
                 <th style="width: 110px;">정원/신청</th>
                 <th style="width: 110px;">신청</th>
             </tr>
@@ -924,11 +1085,10 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
                 if ($searchResults !== null && $searchResults->num_rows > 0) {
                     $rowNum = 1;
                     while ($course = $searchResults->fetch_assoc()) {
-                        // 이미 수강신청한 강의인지 확인 (기존 로직 필요)
-                        $alreadyEnrolled = false; // 이 부분은 학생의 수강신청 목록과 비교해야 함
-                        // $enrolledCourses 변수를 사용하여 확인
+                        // 이미 수강신청한 강의인지 확인
+                        $alreadyEnrolled = false;
                         if ($enrolledCourses && $enrolledCourses->num_rows > 0) {
-                            $enrolledCourses->data_seek(0); // 루프마다 포인터 초기화
+                            $enrolledCourses->data_seek(0);
                             while ($enrolledCourseItem = $enrolledCourses->fetch_assoc()) {
                                 if ($enrolledCourseItem['courseID'] == $course['courseID']) {
                                     $alreadyEnrolled = true;
@@ -945,12 +1105,13 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
                     <td><?= htmlspecialchars($course['departmentName']) ?></td>
                     <td><?= htmlspecialchars($course['professor']) ?></td>
                     <td><?= htmlspecialchars($course['credits']) ?></td>
-                    <td><?= htmlspecialchars($course['courseTimesFormatted']) ?></td> <!-- 수정됨 -->
+                    <td><?= htmlspecialchars($course['courseTimesFormatted']) ?></td>
                     <td><?= htmlspecialchars($course['capacity']) ?>/<?= htmlspecialchars($course['currentEnrollment']) ?></td>
                     <td>
                         <?php if ($alreadyEnrolled) { ?>
                             <form method="post" action="mainStu.php" style="display:inline;" onsubmit="return confirm('정말로 이 강의를 취소하시겠습니까?');">
                                 <input type="hidden" name="courseID" value="<?= $course['courseID'] ?>">
+                                <input type="hidden" name="action" value="cancel">
                                 <button type="submit" class="deleteButton">취소</button>
                             </form>
                         <?php } else if ($course['currentEnrollment'] >= $course['capacity']) { ?>
@@ -978,95 +1139,107 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
     </div>
 
 <script>
-        // PHP에서 가져온 데이터
-        const phpAreas = <?= json_encode($areas) ?>;
-        const phpColleges = <?= json_encode($colleges_arr_for_js) ?>;
-        const phpDepartments = <?= json_encode($departments_arr_for_js) ?>;
+    // PHP에서 가져온 데이터
+    const phpAreas = <?= json_encode($areas) ?>;
+    const phpColleges = <?= json_encode($colleges_arr_for_js) ?>;
+    const phpDepartments = <?= json_encode($departments_arr_for_js) ?>;
 
-        const searchTypeSelect = document.getElementById('searchType');
-        const detailSearchSelect = document.getElementById('detailSearch');
-        const departmentSelect = document.getElementById('department');
-        const keywordInput = document.getElementById('keyword');
-        const creditTypeFilterSelect = document.getElementById('creditTypeFilter');
+    const searchTypeSelect = document.getElementById('searchType');
+    const detailSearchSelect = document.getElementById('detailSearch');
+    const departmentSelect = document.getElementById('department');
+    const keywordInput = document.getElementById('keyword');
+    const creditTypeFilterSelect = document.getElementById('creditTypeFilter');
 
+    function populateDetailSearch() {
+        const selectedType = searchTypeSelect.value;
+        detailSearchSelect.innerHTML = '<option value="">선택</option>'; // 초기화
+        departmentSelect.innerHTML = '<option value="">선택</option>'; // 학과도 초기화
+        departmentSelect.disabled = true;
 
-        function populateDetailSearch() {
-            const selectedType = searchTypeSelect.value;
-            detailSearchSelect.innerHTML = '<option value="">선택</option>'; // 초기화
-            departmentSelect.innerHTML = '<option value="">선택</option>'; // 학과도 초기화
+        if (selectedType === 'area') {
+            detailSearchSelect.disabled = false;
+            phpAreas.forEach(area => {
+                const option = new Option(area, area);
+                detailSearchSelect.add(option);
+            });
+        } else if (selectedType === 'college_department') {
+            detailSearchSelect.disabled = false;
+            phpColleges.forEach(college => {
+                const option = new Option(college.collegeName, college.collegeID);
+                detailSearchSelect.add(option);
+            });
+        } else { // 'all', 'cart'
+            detailSearchSelect.disabled = true;
+        }
+    }
+
+    function populateDepartments() {
+        const selectedCollegeID = detailSearchSelect.value;
+        departmentSelect.innerHTML = '<option value="">선택</option>'; // 초기화
+
+        if (searchTypeSelect.value === 'college_department' && selectedCollegeID) {
+            departmentSelect.disabled = false;
+            phpDepartments.forEach(dept => {
+                if (dept.collegeID == selectedCollegeID) { // 문자열 <-> 숫자 비교 주의
+                    const option = new Option(dept.departmentName, dept.departmentID);
+                    departmentSelect.add(option);
+                }
+            });
+        } else {
             departmentSelect.disabled = true;
-
-            if (selectedType === 'area') {
-                detailSearchSelect.disabled = false;
-                phpAreas.forEach(area => {
-                    const option = new Option(area, area);
-                    detailSearchSelect.add(option);
-                });
-            } else if (selectedType === 'college_department') {
-                detailSearchSelect.disabled = false;
-                phpColleges.forEach(college => {
-                    const option = new Option(college.collegeName, college.collegeID);
-                    detailSearchSelect.add(option);
-                });
-            } else { // 'all', 'cart'
-                detailSearchSelect.disabled = true;
-            }
         }
+    }
 
-        function populateDepartments() {
-            const selectedCollegeID = detailSearchSelect.value;
-            departmentSelect.innerHTML = '<option value="">선택</option>'; // 초기화
+    searchTypeSelect.addEventListener('change', function() {
+        populateDetailSearch();
+        // 상세검색이 변경되면 학과도 자동으로 업데이트 시도 (또는 초기화)
+        populateDepartments();
+    });
 
-            if (searchTypeSelect.value === 'college_department' && selectedCollegeID) {
-                departmentSelect.disabled = false;
-                phpDepartments.forEach(dept => {
-                    if (dept.collegeID == selectedCollegeID) { // 문자열 <-> 숫자 비교 주의
-                        const option = new Option(dept.departmentName, dept.departmentID);
-                        departmentSelect.add(option);
-                    }
-                });
-            } else {
-                departmentSelect.disabled = true;
-            }
-        }
-
-        searchTypeSelect.addEventListener('change', function() {
-            populateDetailSearch();
-            // 상세검색이 변경되면 학과도 자동으로 업데이트 시도 (또는 초기화)
+    detailSearchSelect.addEventListener('change', function() {
+        if (searchTypeSelect.value === 'college_department') {
             populateDepartments();
-        });
-
-        detailSearchSelect.addEventListener('change', function() {
-            if (searchTypeSelect.value === 'college_department') {
-                populateDepartments();
-            }
-        });
-
-        // 페이지 로드 시 초기 상태 설정
-        document.addEventListener('DOMContentLoaded', function() {
-            populateDetailSearch(); // 현재 searchType에 맞게 detailSearch 옵션 채우기
-            // 만약 GET 파라미터로 detailSearch 값이 넘어왔다면 해당 값으로 설정
-            const currentDetailSearchVal = '<?= isset($_GET['detailSearch']) ? htmlspecialchars($_GET['detailSearch']) : '' ?>';
-            if (currentDetailSearchVal && !detailSearchSelect.disabled) {
-                detailSearchSelect.value = currentDetailSearchVal;
-            }
-
-            populateDepartments(); // detailSearch 값에 따라 department 옵션 채우기
-            // 만약 GET 파라미터로 department 값이 넘어왔다면 해당 값으로 설정
-            const currentDepartmentVal = '<?= isset($_GET['department']) ? htmlspecialchars($_GET['department']) : '' ?>';
-            if (currentDepartmentVal && !departmentSelect.disabled) {
-                departmentSelect.value = currentDepartmentVal;
-            }
-        });
-
-        function resetSearch() {
-            searchTypeSelect.value = 'all';
-            creditTypeFilterSelect.value = '';
-            keywordInput.value = '';
-            populateDetailSearch(); // detailSearch 및 department 초기화
-            // GET 파라미터 없이 페이지 리로드하여 완전히 초기화
-            window.location.href = window.location.pathname;
         }
-    </script>
+    });
+
+    // 페이지 로드 시 초기 상태 설정
+    document.addEventListener('DOMContentLoaded', function() {
+        populateDetailSearch(); // 현재 searchType에 맞게 detailSearch 옵션 채우기
+        // 만약 GET 파라미터로 detailSearch 값이 넘어왔다면 해당 값으로 설정
+        const currentDetailSearchVal = '<?= isset($_GET['detailSearch']) ? htmlspecialchars($_GET['detailSearch']) : '' ?>';
+        if (currentDetailSearchVal && !detailSearchSelect.disabled) {
+            detailSearchSelect.value = currentDetailSearchVal;
+        }
+
+        populateDepartments(); // detailSearch 값에 따라 department 옵션 채우기
+        // 만약 GET 파라미터로 department 값이 넘어왔다면 해당 값으로 설정
+        const currentDepartmentVal = '<?= isset($_GET['department']) ? htmlspecialchars($_GET['department']) : '' ?>';
+        if (currentDepartmentVal && !departmentSelect.disabled) {
+            departmentSelect.value = currentDepartmentVal;
+        }
+    });
+
+    function resetSearch() {
+        searchTypeSelect.value = 'all';
+        creditTypeFilterSelect.value = '';
+        keywordInput.value = '';
+        populateDetailSearch(); // detailSearch 및 department 초기화
+        // GET 파라미터 없이 페이지 리로드하여 완전히 초기화
+        window.location.href = window.location.pathname;
+    }
+
+    // 과목코드로 바로 신청
+    function quickEnrollSubmit() {
+        const courseIDInput = document.getElementById('quickEnrollCourseID').value.trim();
+        if (!courseIDInput) {
+            alert('과목코드를 입력해주세요.');
+            return false;
+        }
+        return confirm('과목코드 ' + courseIDInput + '로 수강신청하시겠습니까?');
+    }
+</script>
 </body>
 </html>
+<?php
+$conn->close();
+?>
