@@ -65,11 +65,24 @@ $totalCredits = 0;
 $totalCourses = 0;
 $timeTable = array(); // 시간표 데이터를 저장하기 위한 배열
 
+// 강의별 색상 생성을 위한 배열
+$courseColors = array();
+
 if ($enrolledCourses->num_rows > 0) {
     $totalCourses = $enrolledCourses->num_rows;
     
     while ($course = $enrolledCourses->fetch_assoc()) {
         $totalCredits += $course['credits'];
+
+        // courseID를 기반으로 고유한 색상 생성
+        if (!isset($courseColors[$course['courseID']])) {
+            // courseID를 해시하여 Hue 값 생성 (0~360)
+            $hash = crc32($course['courseID']);
+            $hue = $hash % 360; // 0~359 사이의 Hue 값
+            $saturation = 60; // 채도 60%
+            $lightness = 50;  // 밝기 50% (가독성을 위해 너무 어둡거나 밝지 않게)
+            $courseColors[$course['courseID']] = "hsl($hue, $saturation%, $lightness%)";
+        }
 
         // 시간표 데이터 저장 (A, B 구분 포함)
         if (isset($courseTimes[$course['courseID']])) {
@@ -410,10 +423,16 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
 
         .timeTable .course 
         {
-            background-color: #00a8ff;
             color: white;
             font-size: 11px;
         }
+
+        /* 동적으로 생성된 강의 색상 클래스 */
+        <?php
+        foreach ($courseColors as $courseID => $color) {
+            echo ".course-$courseID { background-color: $color; }\n";
+        }
+        ?>
 
         .searchSection 
         {
@@ -697,7 +716,7 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                     </thead>
                     <tbody>
                         <?php 
-                        // 시간표를 1교시부터 13교시까지 반복, 각 교시에 A와 B 추가
+                        // 시간표를 1교시부터 9교시까지 반복, 각 교시에 A와 B 추가
                         for ($i = 1; $i <= 9; $i++) { 
                             // A row
                             echo "<tr>";
@@ -706,10 +725,11 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                                 $dayEng = $daysEnglish[$day];
                                 echo "<td ";
                                 if (isset($timeTable[$day][$i]['A'])) { 
-                                    echo "class='course' title='" . 
+                                    $courseID = $timeTable[$day][$i]['A']['courseID'];
+                                    echo "class='course course-$courseID' title='" . 
                                         htmlspecialchars($timeTable[$day][$i]['A']['courseName'], ENT_QUOTES, 'UTF-8') . "'>";
                                     echo htmlspecialchars(mb_substr($timeTable[$day][$i]['A']['courseName'], 0, 3, 'UTF-8'), ENT_QUOTES, 'UTF-8');
-                                    if (mb_strlen($timeTable[$day][$i]['A']['courseName']) > 3) echo "...";
+                                    if (mb_strlen($timeTable[$day][$i]['A']['courseName'], 'UTF-8') > 3) echo "...";
                                 } else {
                                     echo ">";
                                 }
@@ -723,10 +743,11 @@ if (isset($_GET['search']) && $_GET['search'] == '1') {
                                 $dayEng = $daysEnglish[$day];
                                 echo "<td ";
                                 if (isset($timeTable[$day][$i]['B'])) { 
-                                    echo "class='course' title='" . 
+                                    $courseID = $timeTable[$day][$i]['B']['courseID'];
+                                    echo "class='course course-$courseID' title='" . 
                                         htmlspecialchars($timeTable[$day][$i]['B']['courseName'], ENT_QUOTES, 'UTF-8') . "'>";
                                     echo htmlspecialchars(mb_substr($timeTable[$day][$i]['B']['courseName'], 0, 3, 'UTF-8'), ENT_QUOTES, 'UTF-8');
-                                    if (mb_strlen($timeTable[$day][$i]['B']['courseName']) > 3) echo "...";
+                                    if (mb_strlen($timeTable[$day][$i]['B']['courseName'], 'UTF-8') > 3) echo "...";
                                 } else {
                                     echo ">";
                                 }
