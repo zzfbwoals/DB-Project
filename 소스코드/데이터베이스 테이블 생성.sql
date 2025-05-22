@@ -83,7 +83,7 @@ CREATE TABLE ExtraEnroll (
     extraEnrollID INT AUTO_INCREMENT PRIMARY KEY, -- 빌넣 요청 ID
     userID VARCHAR(20),                           -- 학번
     courseID VARCHAR(5),                          -- 강의번호
-    reason TEXT,                                  -- 사유
+    reason VARCHAR(100),                          -- 사유
     extraEnrollStatus VARCHAR(10) DEFAULT '대기', -- 빌넣 요청 상태
     FOREIGN KEY (userID) REFERENCES User(userID)
         ON DELETE CASCADE
