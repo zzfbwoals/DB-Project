@@ -16,7 +16,7 @@ $conn = new mysqli("localhost", "student_user", "StudentPass123!", "dbproject");
 if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
 $conn->set_charset("utf8");
 
-// 수강신청 처리 함수
+// 수강신청 처리 함수 (트랜잭션 추가)
 function enrollCourse($conn, $studentID, $courseID, &$totalCredits, $timeTable, $studentInfo) {
     // 1. 과목코드 유효성 확인
     $courseCheckQuery = "SELECT courseID, credits, capacity, currentEnrollment FROM Course WHERE courseID = ?";
@@ -102,23 +102,35 @@ function enrollCourse($conn, $studentID, $courseID, &$totalCredits, $timeTable, 
         return "시간표가 충돌합니다. 다른 강의를 선택해주세요.";
     }
     
-    // 6. 수강신청 등록
-    $enrollQuery = "INSERT INTO Enroll (userID, courseID) VALUES (?, ?)";
-    $stmt = $conn->prepare($enrollQuery);
-    $stmt->bind_param("ss", $studentID, $courseID);
-    $enrollSuccess = $stmt->execute();
-    $stmt->close();
-    
-    if ($enrollSuccess) {
+    // 6. 수강신청 등록 (트랜잭션 시작)
+    $conn->begin_transaction();
+    try {
+        // Enroll 테이블에 삽입
+        $enrollQuery = "INSERT INTO Enroll (userID, courseID) VALUES (?, ?)";
+        $stmt = $conn->prepare($enrollQuery);
+        $stmt->bind_param("ss", $studentID, $courseID);
+        $enrollSuccess = $stmt->execute();
+        if (!$enrollSuccess) {
+            throw new Exception("Enroll 삽입 실패: " . $conn->error);
+        }
+        $stmt->close();
+        
         // currentEnrollment 증가
         $updateEnrollmentQuery = "UPDATE Course SET currentEnrollment = currentEnrollment + 1 WHERE courseID = ?";
         $stmt = $conn->prepare($updateEnrollmentQuery);
         $stmt->bind_param("s", $courseID);
-        $stmt->execute();
+        $updateSuccess = $stmt->execute();
+        if (!$updateSuccess) {
+            throw new Exception("currentEnrollment 업데이트 실패: " . $stmt->error);
+        }
         $stmt->close();
+        
+        // 트랜잭션 커밋
+        $conn->commit();
         return true;
-    } else {
-        return "수강신청 중 오류가 발생했습니다. 다시 시도해주세요.";
+    } catch (Exception $e) {
+        $conn->rollback();
+        return "수강신청 중 오류가 발생했습니다: " . htmlspecialchars($e->getMessage());
     }
 }
 

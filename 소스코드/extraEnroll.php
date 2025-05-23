@@ -27,85 +27,105 @@ while ($row = $extraEnrollResult->fetch_assoc()) {
 }
 $stmt->close();
 
-// 빌넣요청 처리
+// 빌넣요청 처리 (트랜잭션 추가)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'extraEnroll') {
     $courseID = trim($_POST['courseID']);
     $reason = trim($_POST['reason']);
 
-    // 1. 과목코드 유효성 확인 및 정원 확인
-    $courseCheckQuery = "SELECT courseID, capacity, currentEnrollment FROM Course WHERE courseID = ?";
-    $stmt = $conn->prepare($courseCheckQuery);
-    $stmt->bind_param("s", $courseID);
-    $stmt->execute();
-    $courseResult = $stmt->get_result();
-    
-    if ($courseResult->num_rows === 0) {
-        echo json_encode(['success' => false, 'message' => '존재하지 않는 과목코드입니다.']);
-        exit();
-    }
-    
-    $course = $courseResult->fetch_assoc();
-    $stmt->close();
-    
-    if ($course['currentEnrollment'] < $course['capacity']) {
-        echo json_encode(['success' => false, 'message' => '정원이 다 차지 않았습니다. 수강신청 페이지에서 신청해주세요.']);
-        exit();
-    }
+    // 트랜잭션 시작
+    $conn->begin_transaction();
+    try {
+        // 1. 과목코드 유효성 확인 및 정원 확인
+        $courseCheckQuery = "SELECT courseID, capacity, currentEnrollment FROM Course WHERE courseID = ?";
+        $stmt = $conn->prepare($courseCheckQuery);
+        $stmt->bind_param("s", $courseID);
+        $stmt->execute();
+        $courseResult = $stmt->get_result();
+        
+        if ($courseResult->num_rows === 0) {
+            $conn->rollback();
+            echo json_encode(['success' => false, 'message' => '존재하지 않는 과목코드입니다.']);
+            exit();
+        }
+        
+        $course = $courseResult->fetch_assoc();
+        $stmt->close();
+        
+        if ($course['currentEnrollment'] < $course['capacity']) {
+            $conn->rollback();
+            echo json_encode(['success' => false, 'message' => '정원이 다 차지 않았습니다. 수강신청 페이지에서 신청해주세요.']);
+            exit();
+        }
 
-    // 2. 이미 수강신청했는지 확인 (Enroll 테이블 확인)
-    $alreadyEnrolledQuery = "SELECT * FROM Enroll WHERE userID = ? AND courseID = ?";
-    $stmt = $conn->prepare($alreadyEnrolledQuery);
-    $stmt->bind_param("ss", $studentID, $courseID);
-    $stmt->execute();
-    $alreadyEnrolledResult = $stmt->get_result();
-    if ($alreadyEnrolledResult->num_rows > 0) {
-        echo json_encode(['success' => false, 'message' => '이미 수강신청한 과목입니다.']);
-        exit();
-    }
-    $stmt->close();
+        // 2. 이미 수강신청했는지 확인 (Enroll 테이블 확인)
+        $alreadyEnrolledQuery = "SELECT * FROM Enroll WHERE userID = ? AND courseID = ?";
+        $stmt = $conn->prepare($alreadyEnrolledQuery);
+        $stmt->bind_param("ss", $studentID, $courseID);
+        $stmt->execute();
+        $alreadyEnrolledResult = $stmt->get_result();
+        if ($alreadyEnrolledResult->num_rows > 0) {
+            $conn->rollback();
+            echo json_encode(['success' => false, 'message' => '이미 수강신청한 과목입니다.']);
+            exit();
+        }
+        $stmt->close();
 
-    // 3. 빌넣요청 등록
-    $insertQuery = "INSERT INTO ExtraEnroll (userID, courseID, reason, extraEnrollStatus) VALUES (?, ?, ?, '대기')";
-    $stmt = $conn->prepare($insertQuery);
-    $stmt->bind_param("sss", $studentID, $courseID, $reason);
-    $success = $stmt->execute();
-    $stmt->close();
+        // 3. 빌넣요청 등록
+        $insertQuery = "INSERT INTO ExtraEnroll (userID, courseID, reason, extraEnrollStatus) VALUES (?, ?, ?, '대기')";
+        $stmt = $conn->prepare($insertQuery);
+        $stmt->bind_param("sss", $studentID, $courseID, $reason);
+        $success = $stmt->execute();
+        if (!$success) {
+            throw new Exception("빌넣요청 삽입 실패: " . $conn->error);
+        }
+        $stmt->close();
 
-    if ($success) {
+        // 트랜잭션 커밋
+        $conn->commit();
         echo json_encode(['success' => true, 'message' => '빌넣요청이 성공적으로 제출되었습니다.']);
-    } else {
-        echo json_encode(['success' => false, 'message' => '빌넣요청 중 오류가 발생했습니다. 다시 시도해주세요.']);
+    } catch (Exception $e) {
+        $conn->rollback();
+        echo json_encode(['success' => false, 'message' => '빌넣요청 중 오류가 발생했습니다: ' . htmlspecialchars($e->getMessage())]);
     }
     exit();
 }
 
-// 빌넣요청 취소 처리
+// 빌넣요청 취소 처리 (트랜잭션 추가)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'cancelExtraEnroll') {
     $courseID = trim($_POST['courseID']);
 
-    // 요청 존재 여부 확인
-    $checkQuery = "SELECT * FROM ExtraEnroll WHERE userID = ? AND courseID = ? AND extraEnrollStatus = '대기'";
-    $stmt = $conn->prepare($checkQuery);
-    $stmt->bind_param("ss", $studentID, $courseID);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    if ($result->num_rows === 0) {
-        echo json_encode(['success' => false, 'message' => '취소할 요청이 존재하지 않습니다.']);
-        exit();
-    }
-    $stmt->close();
+    // 트랜잭션 시작
+    $conn->begin_transaction();
+    try {
+        // 요청 존재 여부 확인
+        $checkQuery = "SELECT * FROM ExtraEnroll WHERE userID = ? AND courseID = ? AND extraEnrollStatus = '대기'";
+        $stmt = $conn->prepare($checkQuery);
+        $stmt->bind_param("ss", $studentID, $courseID);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        if ($result->num_rows === 0) {
+            $conn->rollback();
+            echo json_encode(['success' => false, 'message' => '취소할 요청이 존재하지 않습니다.']);
+            exit();
+        }
+        $stmt->close();
 
-    // 요청 삭제
-    $deleteQuery = "DELETE FROM ExtraEnroll WHERE userID = ? AND courseID = ?";
-    $stmt = $conn->prepare($deleteQuery);
-    $stmt->bind_param("ss", $studentID, $courseID);
-    $success = $stmt->execute();
-    $stmt->close();
+        // 요청 삭제
+        $deleteQuery = "DELETE FROM ExtraEnroll WHERE userID = ? AND courseID = ?";
+        $stmt = $conn->prepare($deleteQuery);
+        $stmt->bind_param("ss", $studentID, $courseID);
+        $success = $stmt->execute();
+        if (!$success) {
+            throw new Exception("빌넣요청 삭제 실패: " . $conn->error);
+        }
+        $stmt->close();
 
-    if ($success) {
+        // 트랜잭션 커밋
+        $conn->commit();
         echo json_encode(['success' => true, 'message' => '빌넣요청이 취소되었습니다.']);
-    } else {
-        echo json_encode(['success' => false, 'message' => '빌넣요청 취소 중 오류가 발생했습니다. 다시 시도해주세요.']);
+    } catch (Exception $e) {
+        $conn->rollback();
+        echo json_encode(['success' => false, 'message' => '빌넣요청 취소 중 오류가 발생했습니다: ' . htmlspecialchars($e->getMessage())]);
     }
     exit();
 }
