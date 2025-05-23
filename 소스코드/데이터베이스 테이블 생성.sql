@@ -37,12 +37,12 @@ CREATE TABLE Course (
     courseName VARCHAR(100) NOT NULL,-- 강의명
     classroom VARCHAR(50),           -- 강의실
     professorID VARCHAR(20),         -- 담당교수
-    capacity INT NOT NULL,           -- 정원
+    capacity INT,                    -- 정원
     creditType VARCHAR(20), 		 -- 이수구분
     area VARCHAR(20),       		 -- 영역
     grade VARCHAR(10),               -- 학년
     departmentID INT,                -- 학과
-    credits FLOAT NOT NULL,          -- 학점
+    credits INT,                     -- 학점
     currentEnrollment INT DEFAULT 0, -- 현재 수강신청 인원
     FOREIGN KEY (professorID) REFERENCES User(userID)
         ON DELETE SET NULL
