@@ -151,7 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     try
     {
         // 1. 과목코드 유효성 확인 및 정원 확인
-        $courseCheckQuery = "SELECT courseID, capacity, currentEnrollment, credits FROM Course WHERE courseID = ?";
+        $courseCheckQuery = "SELECT courseID, capacity, currentEnrollment, credits, courseName FROM Course WHERE courseID = ?";
         $stmt = $conn->prepare($courseCheckQuery);
         $stmt->bind_param("s", $courseID);
         $stmt->execute();
@@ -183,7 +183,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             exit();
         }
 
-        // 3. 이미 수강신청했는지 확인 (Enroll 테이블)
+        // 3. 시간표 충돌 확인
+        // 요청 과목의 시간표 조회
+        $courseTimeQuery = "SELECT dayOfWeek, startPeriod, endPeriod FROM CourseTime WHERE courseID = ?";
+        $stmt = $conn->prepare($courseTimeQuery);
+        $stmt->bind_param("s", $courseID);
+        $stmt->execute();
+        $courseTimes = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        // 기존 수강신청 및 빌넣요청 대기 과목의 시간표 조회
+        $existingTimesQuery = "SELECT ct.dayOfWeek, ct.startPeriod, ct.endPeriod, c.courseName
+                              FROM CourseTime ct
+                              JOIN (
+                                  SELECT courseID FROM Enroll WHERE userID = ?
+                                  UNION
+                                  SELECT courseID FROM ExtraEnroll WHERE userID = ? AND extraEnrollStatus = '대기'
+                              ) e ON ct.courseID = e.courseID
+                              JOIN Course c ON ct.courseID = c.courseID";
+        $stmt = $conn->prepare($existingTimesQuery);
+        $stmt->bind_param("ss", $studentID, $studentID);
+        $stmt->execute();
+        $existingTimes = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        // 충돌 여부 확인
+        foreach ($courseTimes as $newTime)
+        {
+            foreach ($existingTimes as $existingTime)
+            {
+                if ($newTime['dayOfWeek'] === $existingTime['dayOfWeek'])
+                {
+                    // 시간대 겹침 확인: 새 과목의 시작 시간이 기존 과목의 종료 시간 전이고, 새 과목의 종료 시간이 기존 과목의 시작 시간 후인 경우
+                    if ($newTime['startPeriod'] <= $existingTime['endPeriod'] && $newTime['endPeriod'] >= $existingTime['startPeriod'])
+                    {
+                        $conn->rollback();
+                        $message = sprintf(
+                            "시간표가 충돌합니다: '%s' (%s %d-%d)와 '%s' (%s %d-%d)",
+                            htmlspecialchars($course['courseName']),
+                            htmlspecialchars($newTime['dayOfWeek']),
+                            $newTime['startPeriod'],
+                            $newTime['endPeriod'],
+                            htmlspecialchars($existingTime['courseName']),
+                            htmlspecialchars($existingTime['dayOfWeek']),
+                            $existingTime['startPeriod'],
+                            $existingTime['endPeriod']
+                        );
+                        echo json_encode(['success' => false, 'message' => $message]);
+                        exit();
+                    }
+                }
+            }
+        }
+
+        // 4. 이미 수강신청했는지 확인 (Enroll 테이블)
         $alreadyEnrolledQuery = "SELECT * FROM Enroll WHERE userID = ? AND courseID = ?";
         $stmt = $conn->prepare($alreadyEnrolledQuery);
         $stmt->bind_param("ss", $studentID, $courseID);
@@ -197,7 +250,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
         $stmt->close();
 
-        // 4. 이미 빌넣요청했는지 확인 (ExtraEnroll 테이블)
+        // 5. 이미 빌넣요청했는지 확인 (ExtraEnroll 테이블)
         $alreadyRequestedQuery = "SELECT * FROM ExtraEnroll WHERE userID = ? AND courseID = ? AND extraEnrollStatus = '대기'";
         $stmt = $conn->prepare($alreadyRequestedQuery);
         $stmt->bind_param("ss", $studentID, $courseID);
@@ -211,7 +264,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
         $stmt->close();
 
-        // 5. 빌넣요청 등록
+        // 6. 빌넣요청 등록
         $insertQuery = "INSERT INTO ExtraEnroll (userID, courseID, reason, extraEnrollStatus) VALUES (?, ?, ?, '대기')";
         $stmt = $conn->prepare($insertQuery);
         $stmt->bind_param("sss", $studentID, $courseID, $reason);
@@ -758,7 +811,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1')
         <!-- 모달 창 -->
         <div id="extraEnrollModal" class="modal">
             <div class="modal-content">
-                <span class="close" onclick="closeModal()">&times;</span>
+                <span class="close" onclick="closeModal()">×</span>
                 <h3>빌넣요청</h3>
                 <form id="extraEnrollForm">
                     <label for="extraEnrollReason">요청 사유</label>
