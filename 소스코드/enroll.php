@@ -1,4 +1,8 @@
 <?php
+// ---------------------------------------
+// 초기 설정
+// ---------------------------------------
+
 header('Content-Type: text/html; charset=UTF-8'); // UTF-8 인코딩 설정
 
 session_start();
@@ -37,6 +41,10 @@ $daysEnglish = [
     '금' => 'Fri',
     '토' => 'Sat'
 ];
+
+// ---------------------------------------
+// 데이터 조회
+// ---------------------------------------
 
 // 학생 정보 가져오기
 $studentID = $_SESSION["userID"];
@@ -127,6 +135,10 @@ $stmt->bind_param("s", $studentID);
 $stmt->execute();
 $courseTimesResult = $stmt->get_result();
 $stmt->close();
+
+// ---------------------------------------
+// 데이터 처리
+// ---------------------------------------
 
 // CourseTime 데이터를 courseID별로 그룹화
 $courseTimes = [];
@@ -267,6 +279,10 @@ if ($enrolledCourses->num_rows > 0)
 
 // 한 학기 최대 신청 가능 학점 - lastSemesterCredits에 따라 다르게 설정
 $maxCredits = ($studentInfo['lastSemesterCredits'] >= 3.0) ? 19 : 18;
+
+// ---------------------------------------
+// 수강신청 처리 로직
+// ---------------------------------------
 
 // 수강신청 처리 함수 (트랜잭션 추가)
 function enrollCourse($conn, $studentID, $courseID, $totalCredits, $timeTable, $studentInfo)
@@ -493,6 +509,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quickEnrollCourseID']
         exit();
     }
 }
+
+// ---------------------------------------
+// 검색 로직
+// ---------------------------------------
 
 // 검색 결과 초기화
 $searchResults = null;

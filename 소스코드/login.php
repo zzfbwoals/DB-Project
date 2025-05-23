@@ -1,9 +1,9 @@
 <?php
-session_start();
-
 // ---------------------------------------
 // 초기 설정
 // ---------------------------------------
+
+session_start();
 
 // DB 연결
 $conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");

@@ -1,10 +1,44 @@
 <?php
+// ---------------------------------------
+// 초기 설정
+// ---------------------------------------
+
 $conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
-if ($conn->connect_error) {
+if ($conn->connect_error)
+{
     die("DB 연결 실패: " . $conn->connect_error);
 }
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
+// ---------------------------------------
+// 데이터 조회
+// ---------------------------------------
+
+// 학과 목록 조회 (단과대학별 그룹화)
+$departmentQuery = "SELECT d.departmentID, d.departmentName, c.collegeID, c.collegeName 
+                    FROM Department d 
+                    JOIN College c ON d.collegeID = c.collegeID 
+                    ORDER BY c.collegeName, d.departmentName";
+$departmentResult = $conn->query($departmentQuery);
+$departmentsByCollege = [];
+if ($departmentResult)
+{
+    while ($row = $departmentResult->fetch_assoc())
+    {
+        $departmentsByCollege[$row['collegeName']][] = [
+            'departmentID' => $row['departmentID'],
+            'departmentName' => $row['departmentName']
+        ];
+    }
+    $departmentResult->free();
+}
+
+// ---------------------------------------
+// 회원가입 처리
+// ---------------------------------------
+
+if ($_SERVER["REQUEST_METHOD"] === "POST")
+{
+    // 입력 데이터 수집
     $userID = $_POST['userID'];
     $userPassword = password_hash($_POST['userPassword'], PASSWORD_DEFAULT);
     $userName = $_POST['userName'];
@@ -12,10 +46,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $userRole = $_POST['userRole'];
 
     // 교수일 경우 학번, 학년, 이수학점은 NULL로 설정
-    if ($userRole === 'professor') {
+    if ($userRole === 'professor')
+    {
         $grade = NULL;
         $lastSemesterCredits = NULL;
-    } else {
+    }
+    else
+    {
         $grade = $_POST['grade'];
         $lastSemesterCredits = $_POST['lastSemesterCredits'];
     }
@@ -28,251 +65,199 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $stmt->fetch();
     $stmt->close();
 
-    if ($userIdCount > 0) {
+    if ($userIdCount > 0)
+    {
         echo "<script>alert('이미 존재하는 학번입니다.'); history.back();</script>";
-        exit;
+        exit();
     }
 
+    // 사용자 정보 삽입
     $stmt = $conn->prepare("INSERT INTO User (
         userID, userPassword, userName, adminApproval,
         departmentID, grade, lastSemesterCredits, userRole
     ) VALUES (?, ?, ?, '대기', ?, ?, ?, ?)");
-
     $stmt->bind_param("sssiids", $userID, $userPassword, $userName, $departmentID, $grade, $lastSemesterCredits, $userRole);
 
-    if ($stmt->execute()) {
+    // 삽입 실행 및 결과 처리
+    if ($stmt->execute())
+    {
         echo "<script>alert('회원가입이 완료되었습니다. 관리자 승인 후 로그인 가능합니다.'); location.href='login.php';</script>";
-    } else {
-        echo "<script>alert('회원가입 실패: " . $stmt->error . "'); history.back();</script>";
+    }
+    else
+    {
+        echo "<script>alert('회원가입 실패: " . addslashes($stmt->error) . "'); history.back();</script>";
     }
 
     $stmt->close();
 }
+
 $conn->close();
 ?>
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>순천향대학교 수강신청 시스템 - 회원가입</title>
-  <style>
-    * 
-    { 
-      margin: 0; 
-      padding: 0; 
-      box-sizing: 
-      border-box; 
-      font-family: 'Malgun Gothic', sans-serif; 
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>순천향대학교 수강신청 시스템 - 회원가입</title>
+    <style>
+        *
+        {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Malgun Gothic', sans-serif;
+        }
 
-    body 
-    { 
-      background-color: #f5f5f5; 
-    }
+        body
+        {
+            background-color: #f5f5f5;
+        }
 
-    .section 
-    { 
-      width: 400px; 
-      margin: 0 auto; 
-      background-color: white; 
-      padding: 30px; 
-      border-radius: 10px; 
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
-      margin-top: 50px; 
-    }
+        .section
+        {
+            width: 400px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-top: 50px;
+        }
 
-    .logo 
-    { 
-      text-align: center; 
-      margin-bottom: 20px; 
-    }
+        .logo
+        {
+            text-align: center;
+            margin-bottom: 20px;
+        }
 
-    .logo img 
-    { 
-      width: 200px; 
-    }
+        .logo img
+        {
+            width: 200px;
+        }
 
-    h3 
-    { 
-      font-size: 22px; 
-      text-align: center; 
-      margin-bottom: 20px; 
-      color: #333; 
-    }
+        h3
+        {
+            font-size: 22px;
+            text-align: center;
+            margin-bottom: 20px;
+            color: #333;
+        }
 
-    .signupForm input, .signupForm select 
-    { 
-      width: 100%; 
-      padding: 12px; 
-      margin-bottom: 12px; 
-      border: 1px solid #ddd; 
-      border-radius: 5px; 
-    }
+        .signupForm input, .signupForm select
+        {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
 
-    .signupButton 
-    { 
-      width: 100%; 
-      padding: 15px; 
-      font-size: 16px; 
-      border: none; 
-      border-radius: 5px; 
-      background-color: #00a8ff; 
-      color: white; 
-      cursor: pointer; 
-    }
+        .signupButton
+        {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            background-color: #00a8ff;
+            color: white;
+            cursor: pointer;
+        }
 
-    .signupButton:hover 
-    { 
-      background-color: #0090dd; 
-    }
+        .signupButton:hover
+        {
+            background-color: #0090dd;
+        }
 
-    .backLink 
-    { 
-      display: block; 
-      margin-top: 20px; 
-      text-align: center; 
-      color: #00a8ff; 
-      text-decoration: none; 
-      font-size: 14px; 
-    }
+        .backLink
+        {
+            display: block;
+            margin-top: 20px;
+            text-align: center;
+            color: #00a8ff;
+            text-decoration: none;
+            font-size: 14px;
+        }
 
-    .backLink:hover 
-    { 
-      text-decoration: underline; 
-    }
+        .backLink:hover
+        {
+            text-decoration: underline;
+        }
 
-    .studentOnly 
-    { 
-      display: none; 
-    }
-  </style>
+        .studentOnly
+        {
+            display: none;
+        }
+    </style>
 </head>
 <body>
-  <div class="section">
-    <div class="logo">
-      <img src="https://blog.kakaocdn.net/dn/bx64Eo/btqEOZOpwoE/veAdLIDj4xKXMakWfvHRmk/img.jpg" alt="순천향대학교 로고">
+    <!-- 회원가입 폼 렌더링 -->
+    <div class="section">
+        <div class="logo">
+            <img src="https://blog.kakaocdn.net/dn/bx64Eo/btqEOZOpwoE/veAdLIDj4xKXMakWfvHRmk/img.jpg" alt="순천향대학교 로고">
+        </div>
+
+        <h3>회원가입</h3>
+
+        <form class="signupForm" action="signup.php" method="POST">
+            <input type="text" name="userID" placeholder="학번" required>
+            <input type="text" name="userName" placeholder="이름" required>
+            <input type="password" name="userPassword" placeholder="비밀번호" required>
+
+            <select name="departmentID" required>
+                <option value="">학과를 선택하세요</option>
+                <?php
+                foreach ($departmentsByCollege as $collegeName => $departments)
+                {
+                ?>
+                    <optgroup label="<?= htmlspecialchars($collegeName) ?>">
+                        <?php
+                        foreach ($departments as $dept)
+                        {
+                        ?>
+                            <option value="<?= $dept['departmentID'] ?>"><?= htmlspecialchars($dept['departmentName']) ?></option>
+                        <?php
+                        }
+                        ?>
+                    </optgroup>
+                <?php
+                }
+                ?>
+            </select>
+
+            <select name="userRole" id="roleSelect" required onchange="toggleStudentFields()">
+                <option value="">역할을 선택하세요</option>
+                <option value="student">학생</option>
+                <option value="professor">교수</option>
+            </select>
+
+            <div id="studentfields" class="studentOnly">
+                <input type="number" name="grade" placeholder="학년 (숫자)" min="1" max="5">
+                <input type="number" name="lastSemesterCredits" step="0.01" placeholder="전학기 학점 (예: 4.3)" min="0" max="4.5">
+            </div>
+
+            <button type="submit" class="signupButton">회원가입 완료</button>
+        </form>
+
+        <a href="login.php" class="backLink">이미 계정이 있나요? 로그인</a>
     </div>
 
-    <h3>회원가입</h3>
-
-    <form class="signupForm" action="signup.php" method="POST">
-      <input type="text" name="userID" placeholder="학번" required>
-      <input type="text" name="userName" placeholder="이름" required>
-      <input type="password" name="userPassword" placeholder="비밀번호" required>
-
-      <select name="departmentID" required>
-        <option value="">학과를 선택하세요</option>
-
-        <optgroup label="의과대학">
-          <option value="1">의예과</option>
-          <option value="2">의학과</option>
-          <option value="3">간호학과</option>
-        </optgroup>
-
-        <optgroup label="자연과학대학">
-          <option value="4">화학과</option>
-          <option value="5">식품영양학과</option>
-          <option value="6">한경보건학과</option>
-          <option value="7">생명과학과</option>
-          <option value="8">스포츠과학과</option>
-          <option value="9">사회체육학과</option>
-          <option value="10">스포츠의학과</option>
-        </optgroup>
-
-        <optgroup label="인문사회과학대학">
-          <option value="11">유아교육과</option>
-          <option value="12">특수교육과</option>
-          <option value="13">청소년교육상담학과</option>
-          <option value="14">법학과</option>
-          <option value="15">행정학과</option>
-          <option value="16">경찰행정학과</option>
-          <option value="17">사회복지학과</option>
-        </optgroup>
-
-        <optgroup label="글로벌경영대학">
-          <option value="18">경영학과</option>
-          <option value="19">국제통상학과</option>
-          <option value="20">관광경영학과</option>
-          <option value="21">경제금융학과</option>
-          <option value="22">IT금융경영학과</option>
-          <option value="23">글로벌문화산업학과</option>
-          <option value="24">회계학과</option>
-        </optgroup>
-
-        <optgroup label="공과대학">
-          <option value="25">컴퓨터공학과</option>
-          <option value="26">정보통신공학과</option>
-          <option value="27">전자공학과</option>
-          <option value="28">전기공학과</option>
-          <option value="29">전자정보공학과</option>
-          <option value="30">나노화학공학과</option>
-          <option value="31">에너지환경공학과</option>
-          <option value="32">디스플레이신소재공학과</option>
-          <option value="33">기계공학과</option>
-        </optgroup>
-
-        <optgroup label="SW융합대학">
-          <option value="34">컴퓨터소프트웨어공학과</option>
-          <option value="35">정보보호학과</option>
-          <option value="36">의료IT공학과</option>
-          <option value="37">AI빅데이터학과</option>
-          <option value="38">사물인터넷학과</option>
-          <option value="39">메타버스&amp;게임학과</option>
-        </optgroup>
-
-        <optgroup label="의료과학대학">
-          <option value="40">보건행정경영학과</option>
-          <option value="41">의료생명공학과</option>
-          <option value="42">임상병리학과</option>
-          <option value="43">작업치료학과</option>
-          <option value="44">의약공학과</option>
-          <option value="45">의공학과</option>
-        </optgroup>
-
-        <optgroup label="SCH미디어랩스">
-          <option value="46">한국문화콘텐츠학과</option>
-          <option value="47">영미학과</option>
-          <option value="48">중국학과</option>
-          <option value="49">미디어커뮤니케이션학과</option>
-          <option value="50">건축학과</option>
-          <option value="51">디지털애니메이션학과</option>
-          <option value="52">스마트자동차학과</option>
-          <option value="53">공연영상학과</option>
-          <option value="54">에너지공학과</option>
-          <option value="55">탄소중립학과</option>
-          <option value="56">헬스케어융합전공</option>
-          <option value="57">바이오의약전공</option>
-        </optgroup>
-      </select>
-
-      <select name="userRole" id="roleSelect" required onchange="toggleStudentFields()">
-        <option value="">역할을 선택하세요</option>
-        <option value="student">학생</option>
-        <option value="professor">교수</option>
-      </select>
-
-      <div id="studentfields" class="studentOnly">
-        <input type="number" name="grade" placeholder="학년 (숫자)" min="1" max="5">
-        <input type="number" name="lastSemesterCredits" step="0.01" placeholder="전학기 학점 (예: 4.3)" min="0" max="4.5">
-      </div>
-
-      <button type="submit" class="signupButton">회원가입 완료</button>
-    </form>
-
-    <a href="login.php" class="backLink">이미 계정이 있나요? 로그인</a>
-  </div>
-
-  <script>
-    function toggleStudentFields() {
-      const role = document.getElementById('roleSelect').value;
-      const studentFields = document.getElementById('studentfields');
-      if (role === 'student') {
-        studentFields.style.display = 'block';
-      } else {
-        studentFields.style.display = 'none';
-      }
-    }
-  </script>
+    <script>
+        // 학생 필드 표시/숨김 토글
+        function toggleStudentFields()
+        {
+            const role = document.getElementById('roleSelect').value;
+            const studentFields = document.getElementById('studentfields');
+            if (role === 'student')
+            {
+                studentFields.style.display = 'block';
+            }
+            else
+            {
+                studentFields.style.display = 'none';
+            }
+        }
+    </script>
 </body>
 </html>
