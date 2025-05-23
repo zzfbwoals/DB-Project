@@ -1,11 +1,22 @@
 <?php
 session_start();
 
+// ---------------------------------------
+// 초기 설정
+// ---------------------------------------
+
 // DB 연결
 $conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
-if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
+if ($conn->connect_error)
+{
+    die("DB 연결 실패: " . $conn->connect_error);
+}
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") 
+// ---------------------------------------
+// 로그인 처리
+// ---------------------------------------
+
+if ($_SERVER["REQUEST_METHOD"] === "POST")
 {
     $userID = $_POST['userID'];
     $userPassword = $_POST['userPassword'];
@@ -16,19 +27,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
     $stmt->execute();
     $result = $stmt->get_result();
 
-    if ($row = $result->fetch_assoc()) 
+    // 사용자 존재 여부 확인
+    if ($row = $result->fetch_assoc())
     {
         // 비밀번호 해시 확인
-        if (password_verify($userPassword, $row['userPassword'])) 
+        if (password_verify($userPassword, $row['userPassword']))
         {
-
             // 관리자 승인 확인
-            if ($row['adminApproval'] === '대기') 
+            if ($row['adminApproval'] === '대기')
             {
                 echo "<script>alert('관리자의 승인이 아직 완료되지 않았습니다.'); history.back();</script>";
                 exit();
             }
-            else if ($row['adminApproval'] === '거절') 
+            else if ($row['adminApproval'] === '거절')
             {
                 echo "<script>alert('관리자에 승인이 거절되었습니다.'); history.back();</script>";
                 exit();
@@ -38,25 +49,32 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
             $_SESSION['userID'] = $userID;
             $_SESSION['userRole'] = $row['userRole'];
 
-            if ($row['userRole'] === 'student') 
+            // 역할별 리다이렉트
+            if ($row['userRole'] === 'student')
+            {
                 header("Location: enroll.php");
-            else if ($row['userRole'] === 'professor') 
+            }
+            else if ($row['userRole'] === 'professor')
+            {
                 header("Location: professor.php");
-            else if ($row['userRole'] === 'admin') 
+            }
+            else if ($row['userRole'] === 'admin')
+            {
                 header("Location: admin.php");
-            else 
+            }
+            else
             {
                 echo "<script>alert('알 수 없는 사용자 유형입니다.'); history.back();</script>";
                 exit();
             }
-        } 
-        else 
+        }
+        else
         {
             echo "<script>alert('비밀번호가 일치하지 않습니다.'); history.back();</script>";
             exit();
         }
-    } 
-    else 
+    }
+    else
     {
         echo "<script>alert('존재하지 않는 사용자입니다.'); history.back();</script>";
         exit();
@@ -68,7 +86,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
 $conn->close();
 ?>
 
-
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -76,7 +93,7 @@ $conn->close();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>순천향대학교 수강신청 시스템</title>
     <style>
-        * 
+        *
         {
             margin: 0;
             padding: 0;
@@ -84,12 +101,12 @@ $conn->close();
             font-family: 'Malgun Gothic', sans-serif;
         }
 
-        body 
+        body
         {
             background-color: #f5f5f5;
         }
 
-        .section 
+        .section
         {
             width: 400px;
             margin: 0 auto;
@@ -100,18 +117,18 @@ $conn->close();
             margin-top: 50px;
         }
 
-        .logo 
+        .logo
         {
             text-align: center;
             margin-bottom: 20px;
         }
 
-        .logo img 
+        .logo img
         {
             width: 200px;
         }
 
-        h3 
+        h3
         {
             font-size: 22px;
             text-align: center;
@@ -119,7 +136,7 @@ $conn->close();
             color: #333;
         }
 
-        .loginForm input 
+        .loginForm input
         {
             width: 100%;
             padding: 12px;
@@ -128,7 +145,7 @@ $conn->close();
             border-radius: 5px;
         }
 
-        .loginButton 
+        .loginButton
         {
             width: 100%;
             padding: 15px;
@@ -141,12 +158,12 @@ $conn->close();
             margin-top: 10px;
         }
 
-        .loginButton:hover 
+        .loginButton:hover
         {
             background-color: #0090dd;
         }
 
-        .linkToSign 
+        .linkToSign
         {
             display: block;
             margin-top: 20px;
@@ -156,17 +173,17 @@ $conn->close();
             font-size: 14px;
         }
 
-        .linkToSign:hover 
+        .linkToSign:hover
         {
             text-decoration: underline;
         }
 
-        .eventSection 
+        .eventSection
         {
             margin-top: 40px;
         }
 
-        .eventCard 
+        .eventCard
         {
             background-color: #f9f9f9;
             border-radius: 5px;
@@ -174,7 +191,7 @@ $conn->close();
             margin-bottom: 20px;
         }
 
-        .eventCard .tag 
+        .eventCard .tag
         {
             display: inline-block;
             padding: 3px 8px;
@@ -185,19 +202,19 @@ $conn->close();
             margin-right: 5px;
         }
 
-        .eventCard .tag.new 
+        .eventCard .tag.new
         {
             background-color: #28a745;
         }
 
-        .eventCard h4 
+        .eventCard h4
         {
             font-size: 14px;
             margin: 10px 0;
             color: #333;
         }
 
-        .eventCard .date, .eventCard .time 
+        .eventCard .date, .eventCard .time
         {
             font-size: 12px;
             color: #666;
@@ -206,7 +223,7 @@ $conn->close();
     </style>
 </head>
 <body>
-
+    <!-- 로그인 폼 및 수강신청 일정 렌더링 -->
     <div class="section">
         <div class="loginSection">
             <div class="logo">
@@ -226,7 +243,6 @@ $conn->close();
         </div>
 
         <div class="eventSection">
-
             <h3>수강신청 일정</h3>
 
             <div class="eventCard">
@@ -277,7 +293,7 @@ $conn->close();
                 <p class="time">시간 : 10:00 ~ 24:00</p>
             </div>
 
-                <div class="eventCard">
+            <div class="eventCard">
                 <span class="tag">빌넣</span>
                 <span class="tag new">전체</span>
                 <h4>2025학년도 1학기 빌넣요청 기간</h4>
@@ -285,7 +301,7 @@ $conn->close();
                 <p class="time">시간 : 10:00 ~ 24:00</p>
             </div>
 
-                <div class="eventCard">
+            <div class="eventCard">
                 <span class="tag">2차</span>
                 <span class="tag new">전체</span>
                 <h4>2025학년도 1학기 수강신청 정정 기간</h4>
@@ -294,6 +310,5 @@ $conn->close();
             </div>
         </div>
     </div>
-
 </body>
 </html>
