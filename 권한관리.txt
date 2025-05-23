@@ -1,0 +1,229 @@
+MySQL 측면에서 권한 관리를 추가로 구현하여 현재 PHP 세션 기반 권한 관리와 병행하도록 하겠습니다. 이를 통해 데이터베이스 수준에서도 접근 제어를 강화하고, 보안성을 높일 수 있습니다.
+
+---
+
+### 목표
+1. **MySQL 사용자 계정 생성**:
+   - 각 역할(`admin`, `professor`, `student`)별로 MySQL 사용자 계정을 생성.
+   - 각 계정에 필요한 권한만 부여(`GRANT`, `REVOKE` 사용).
+
+2. **PHP 코드 수정**:
+   - 세션에 따라 적절한 MySQL 사용자 계정으로 접속하도록 수정.
+   - 권한 부족 시 MySQL에서 에러가 발생하도록 하여 추가적인 보호.
+
+3. **테스트**:
+   - 각 역할별로 접속 및 작업이 올바르게 제한되는지 확인.
+
+---
+
+### 1. MySQL 권한 관리 설정
+
+#### 1.1 MySQL 사용자 계정 생성
+각 역할에 맞는 사용자 계정을 생성하고 비밀번호를 설정합니다.
+
+```sql
+-- MySQL root 계정으로 실행
+CREATE USER 'admin_user'@'localhost' IDENTIFIED BY 'AdminPass123!';
+CREATE USER 'professor_user'@'localhost' IDENTIFIED BY 'ProfPass123!';
+CREATE USER 'student_user'@'localhost' IDENTIFIED BY 'StudentPass123!';
+```
+
+#### 1.2 권한 부여 (GRANT)
+각 사용자 계정에 역할에 맞는 최소한의 권한을 부여합니다.
+
+```sql
+-- admin_user: 대부분의 테이블에 대해 모든 권한 부여 (User 승인/거절 등)
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbproject.* TO 'admin_user'@'localhost';
+
+-- professor_user: ExtraEnroll, Enroll, Course 관련 권한 부여
+GRANT SELECT, UPDATE ON dbproject.ExtraEnroll TO 'professor_user'@'localhost'; -- 빌넣요청 승인/거절
+GRANT SELECT, INSERT ON dbproject.Enroll TO 'professor_user'@'localhost'; -- 수강신청 추가
+GRANT SELECT, UPDATE ON dbproject.Course TO 'professor_user'@'localhost'; -- currentEnrollment 수정
+GRANT SELECT ON dbproject.User TO 'professor_user'@'localhost'; -- 학생 정보 조회
+
+-- student_user: 본인 관련 데이터만 조작 가능
+GRANT SELECT, INSERT, DELETE ON dbproject.Enroll TO 'student_user'@'localhost'; -- 수강신청/취소
+GRANT SELECT, INSERT, DELETE ON dbproject.ExtraEnroll TO 'student_user'@'localhost'; -- 빌넣요청
+GRANT SELECT, UPDATE ON dbproject.Cart TO 'student_user'@'localhost'; -- 장바구니
+GRANT SELECT ON dbproject.Course TO 'student_user'@'localhost'; -- 강의 조회
+GRANT SELECT ON dbproject.User TO 'student_user'@'localhost'; -- 본인 정보 조회
+GRANT SELECT ON dbproject.CourseTime TO 'student_user'@'localhost'; -- 시간표 조회
+```
+
+#### 1.3 권한 확인 및 적용
+권한 부여 후 적용 및 확인합니다.
+
+```sql
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR 'admin_user'@'localhost';
+SHOW GRANTS FOR 'professor_user'@'localhost';
+SHOW GRANTS FOR 'student_user'@'localhost';
+```
+
+#### 1.4 (선택) 권한 회수 (REVOKE)
+필요 시 특정 권한을 회수할 수 있습니다.
+
+```sql
+-- 예: student_user의 DELETE 권한 회수
+REVOKE DELETE ON dbproject.Enroll FROM 'student_user'@'localhost';
+```
+
+---
+
+### 2. PHP 코드 수정
+
+#### 2.1 DB 접속 로직 수정
+각 페이지에서 세션에 따라 적절한 MySQL 사용자 계정으로 접속하도록 수정합니다.
+
+- **`admin.php`**:
+```php
+<?php
+session_start();
+
+if (!isset($_SESSION["userID"]) || $_SESSION["userRole"] !== 'admin') {
+    header("Location: login.php");
+    exit();
+}
+
+// admin_user로 접속
+$conn = new mysqli("localhost", "admin_user", "AdminPass123!", "dbproject");
+if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
+
+// ... (기존 코드 유지)
+```
+
+- **`professor.php`**:
+```php
+<?php
+session_start();
+
+if (!isset($_SESSION["userID"]) || $_SESSION["userRole"] !== 'professor') {
+    header("Location: login.php");
+    exit();
+}
+
+// professor_user로 접속
+$conn = new mysqli("localhost", "professor_user", "ProfPass123!", "dbproject");
+if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
+
+// ... (기존 코드 유지)
+```
+
+- **`enroll.php`**:
+```php
+<?php
+session_start();
+
+if (!isset($_SESSION["userID"]) || $_SESSION["userRole"] !== 'student') {
+    header("Location: login.php");
+    exit();
+}
+
+$studentID = $_SESSION["userID"];
+
+// student_user로 접속
+$conn = new mysqli("localhost", "student_user", "StudentPass123!", "dbproject");
+if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
+
+// ... (기존 코드 유지)
+```
+
+#### 2.2 권한 체크 강화
+MySQL 권한 관리로 인해 권한이 없는 작업은 자동으로 실패하므로, PHP 코드에서는 에러를 적절히 처리합니다.
+
+- **예: `enroll.php`의 수강신청 취소 처리**:
+```php
+// 수강신청 취소 처리
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID']) && isset($_POST['action']) && $_POST['action'] === 'cancel') {
+    $deleteCourseID = $_POST['courseID'];
+
+    // 트랜잭션 시작
+    $conn->begin_transaction();
+
+    try {
+        // Enroll 테이블에서 삭제
+        $stmt = $conn->prepare("DELETE FROM Enroll WHERE userID = ? AND courseID = ?");
+        $stmt->bind_param("ss", $studentID, $deleteCourseID);
+        $success = $stmt->execute();
+        if (!$success) {
+            throw new Exception("Enroll 삭제 실패: " . $conn->error);
+        }
+        $stmt->close();
+
+        // ExtraEnroll 테이블에서 해당 데이터 삭제
+        $stmt = $conn->prepare("DELETE FROM ExtraEnroll WHERE userID = ? AND courseID = ?");
+        $stmt->bind_param("ss", $studentID, $deleteCourseID);
+        $success = $stmt->execute();
+        if (!$success) {
+            throw new Exception("ExtraEnroll 삭제 실패: " . $conn->error);
+        }
+        $stmt->close();
+
+        // 강의 현재 수강신청 인원 감소
+        $stmt = $conn->prepare("UPDATE Course SET currentEnrollment = GREATEST(currentEnrollment - 1, 0) WHERE courseID = ?");
+        $stmt->bind_param("s", $deleteCourseID);
+        $success = $stmt->execute();
+        if (!$success) {
+            throw new Exception("currentEnrollment 업데이트 실패: " . $conn->error);
+        }
+        $stmt->close();
+
+        // 트랜잭션 커밋
+        $conn->commit();
+
+        // 새로고침(POST-Redirect-GET 패턴)
+        header("Location: enroll.php?" . time());
+        exit();
+    } catch (Exception $e) {
+        $conn->rollback();
+        echo "<script>alert('수강신청 취소 중 오류가 발생했습니다: " . htmlspecialchars($e->getMessage()) . "'); window.location.href='enroll.php';</script>";
+        exit();
+    }
+}
+```
+
+---
+
+### 3. 테스트 및 확인
+
+1. **관리자 권한 테스트 (`admin_user`)**:
+   - `admin.php`에서 `admin_user`로 접속 후 `User` 테이블의 `adminApproval` 상태 변경 테스트.
+   - 다른 테이블 수정도 가능해야 함.
+
+2. **교수 권한 테스트 (`professor_user`)**:
+   - `professor.php`에서 `professor_user`로 접속 후 `ExtraEnroll` 상태 변경 및 `Enroll` 추가 테스트.
+   - `User` 테이블 삭제 시도 시 MySQL 에러 발생 확인 (권한 없음).
+
+3. **학생 권한 테스트 (`student_user`)**:
+   - `enroll.php`에서 `student_user`로 접속 후 본인 수강신청 취소 및 빌넣요청 삭제 테스트.
+   - `User` 테이블의 `adminApproval` 수정 시도 시 MySQL 에러 발생 확인 (권한 없음).
+
+---
+
+### 추가 고려 사항
+1. **보안**:
+   - MySQL 사용자 비밀번호는 안전한 방식으로 관리 (예: 환경 변수 사용).
+   - 비밀번호는 복잡하고 예측 불가능하게 설정.
+
+2. **확장성**:
+   - 역할이 추가될 경우 새로운 MySQL 사용자 계정 생성 및 권한 부여 필요.
+   - PHP 코드에서 접속 정보를 동적으로 관리하도록 리팩토링 가능:
+     ```php
+     $dbUsers = [
+         'admin' => ['user' => 'admin_user', 'pass' => 'AdminPass123!'],
+         'professor' => ['user' => 'professor_user', 'pass' => 'ProfPass123!'],
+         'student' => ['user' => 'student_user', 'pass' => 'StudentPass123!'],
+     ];
+     $role = $_SESSION["userRole"];
+     $conn = new mysqli("localhost", $dbUsers[$role]['user'], $dbUsers[$role]['pass'], "dbproject");
+     ```
+
+3. **에러 처리**:
+   - 권한 부족으로 MySQL 쿼리가 실패할 경우, 사용자에게 적절한 에러 메시지 제공.
+
+---
+
+### 결론
+MySQL 권한 관리를 추가하여 데이터베이스 수준에서도 접근 제어를 강화했습니다. PHP 세션 기반 권한 관리와 병행함으로써 보안성을 높였으며, 역할별로 필요한 최소한의 권한만 부여했습니다.
+
+현재 시간은 2025년 5월 23일 금요일 오후 2:09 KST입니다. 추가 요청이 있으면 말씀해 주세요!

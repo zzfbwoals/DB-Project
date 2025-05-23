@@ -7,7 +7,8 @@ if (!isset($_SESSION["userID"]) || $_SESSION["userRole"] !== 'student') {
     exit();
 }
 
-$conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
+// student_user로 접속
+$conn = new mysqli("localhost", "student_user", "StudentPass123!", "dbproject");
 if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
 $conn->set_charset("utf8");
 
@@ -85,43 +86,68 @@ $timeTable = array();
 // 장바구니에서 삭제 처리
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID']) && isset($_POST['action']) && $_POST['action'] === 'remove') {
     $deleteCourseID = $_POST['courseID'];
-    $stmt = $conn->prepare("DELETE FROM Cart WHERE userID = ? AND courseID = ?");
-    $stmt->bind_param("ss", $studentID, $deleteCourseID);
-    $stmt->execute();
-    $stmt->close();
-    header("Location: cart.php");
-    exit();
+    
+    // 트랜잭션 시작
+    $conn->begin_transaction();
+    try {
+        $stmt = $conn->prepare("DELETE FROM Cart WHERE userID = ? AND courseID = ?");
+        $stmt->bind_param("ss", $studentID, $deleteCourseID);
+        $success = $stmt->execute();
+        if (!$success) {
+            throw new Exception("장바구니 삭제 실패: " . $conn->error);
+        }
+        $stmt->close();
+        
+        // 트랜잭션 커밋
+        $conn->commit();
+        header("Location: cart.php");
+        exit();
+    } catch (Exception $e) {
+        $conn->rollback();
+        echo "<script>alert('장바구니 삭제 중 오류가 발생했습니다: " . htmlspecialchars($e->getMessage()) . "'); window.location.href='cart.php';</script>";
+        exit();
+    }
 }
 
 // 과목코드로 장바구니 추가 처리
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quickCartCourseID']) && isset($_POST['action']) && ($_POST['action'] === 'quickCart' || $_POST['action'] === 'add')) {
     $quickCourseID = trim($_POST['quickCartCourseID']);
     
-    // 중복 확인
-    $checkQuery = "SELECT * FROM Cart WHERE userID = ? AND courseID = ?";
-    $stmt = $conn->prepare($checkQuery);
-    $stmt->bind_param("ss", $studentID, $quickCourseID);
-    $stmt->execute();
-    $checkResult = $stmt->get_result();
-    if ($checkResult->num_rows > 0) {
-        echo "<script>alert('이미 장바구니에 추가된 과목입니다.'); window.location.href='cart.php';</script>";
+    // 트랜잭션 시작
+    $conn->begin_transaction();
+    try {
+        // 중복 확인
+        $checkQuery = "SELECT * FROM Cart WHERE userID = ? AND courseID = ?";
+        $stmt = $conn->prepare($checkQuery);
+        $stmt->bind_param("ss", $studentID, $quickCourseID);
+        $stmt->execute();
+        $checkResult = $stmt->get_result();
+        if ($checkResult->num_rows > 0) {
+            $conn->rollback();
+            echo "<script>alert('이미 장바구니에 추가된 과목입니다.'); window.location.href='cart.php';</script>";
+            exit();
+        }
+        $stmt->close();
+
+        // 장바구니 추가
+        $insertQuery = "INSERT INTO Cart (userID, courseID) VALUES (?, ?)";
+        $stmt = $conn->prepare($insertQuery);
+        $stmt->bind_param("ss", $studentID, $quickCourseID);
+        $success = $stmt->execute();
+        if (!$success) {
+            throw new Exception("장바구니 추가 실패: " . $conn->error);
+        }
+        $stmt->close();
+
+        // 트랜잭션 커밋
+        $conn->commit();
+        echo "<script>alert('장바구니에 추가되었습니다.'); window.location.href='cart.php';</script>";
+        exit();
+    } catch (Exception $e) {
+        $conn->rollback();
+        echo "<script>alert('장바구니 추가 중 오류가 발생했습니다: " . htmlspecialchars($e->getMessage()) . "'); window.location.href='cart.php';</script>";
         exit();
     }
-    $stmt->close();
-
-    // 장바구니 추가
-    $insertQuery = "INSERT INTO Cart (userID, courseID) VALUES (?, ?)";
-    $stmt = $conn->prepare($insertQuery);
-    $stmt->bind_param("ss", $studentID, $quickCourseID);
-    $success = $stmt->execute();
-    $stmt->close();
-
-    if ($success) {
-        echo "<script>alert('장바구니에 추가되었습니다.'); window.location.href='cart.php';</script>";
-    } else {
-        echo "<script>alert('장바구니 추가 중 오류가 발생했습니다.'); window.location.href='cart.php';</script>";
-    }
-    exit();
 }
 
 if ($cartCourses->num_rows > 0) {

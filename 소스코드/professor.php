@@ -6,7 +6,8 @@ if (!isset($_SESSION["userID"]) || $_SESSION["userRole"] !== 'professor') {
     exit();
 }
 
-$conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
+// professor_user로 접속
+$conn = new mysqli("localhost", "professor_user", "ProfPass123!", "dbproject");
 if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
 
 // 로그인한 유저 정보 조회

@@ -7,7 +7,8 @@ if (!isset($_SESSION["userID"]) || $_SESSION["userRole"] !== 'student') {
     exit();
 }
 
-$conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
+// student_user로 접속
+$conn = new mysqli("localhost", "student_user", "StudentPass123!", "dbproject");
 if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
 $conn->set_charset("utf8");
 

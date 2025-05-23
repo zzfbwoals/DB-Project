@@ -7,7 +7,8 @@ if (!isset($_SESSION["userID"]) || $_SESSION["userRole"] !== 'admin')
     exit();
 }
 
-$conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
+// admin_user로 접속
+$conn = new mysqli("localhost", "admin_user", "AdminPass123!", "dbproject");
 if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
 
 // 승인 처리 로직

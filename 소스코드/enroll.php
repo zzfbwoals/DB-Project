@@ -11,8 +11,8 @@ if (!isset($_SESSION["userID"]) || $_SESSION["userRole"] !== 'student')
     exit();
 }
 
-// DB 연결
-$conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
+// student_user로 접속
+$conn = new mysqli("localhost", "student_user", "StudentPass123!", "dbproject");
 if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
 $conn->set_charset("utf8");
 
@@ -207,29 +207,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID']) && isset(
         // Enroll 테이블에서 삭제
         $stmt = $conn->prepare("DELETE FROM Enroll WHERE userID = ? AND courseID = ?");
         $stmt->bind_param("ss", $studentID, $deleteCourseID);
-        $stmt->execute();
+        $success = $stmt->execute();
+        if (!$success) {
+            throw new Exception("Enroll 삭제 실패: " . $conn->error);
+        }
         $stmt->close();
 
         // ExtraEnroll 테이블에서 해당 데이터 삭제
         $stmt = $conn->prepare("DELETE FROM ExtraEnroll WHERE userID = ? AND courseID = ?");
         $stmt->bind_param("ss", $studentID, $deleteCourseID);
-        $stmt->execute();
+        $success = $stmt->execute();
+        if (!$success) {
+            throw new Exception("ExtraEnroll 삭제 실패: " . $conn->error);
+        }
         $stmt->close();
 
         // 강의 현재 수강신청 인원 감소
         $stmt = $conn->prepare("UPDATE Course SET currentEnrollment = GREATEST(currentEnrollment - 1, 0) WHERE courseID = ?");
         $stmt->bind_param("s", $deleteCourseID);
-        $stmt->execute();
+        $success = $stmt->execute();
+        if (!$success) {
+            throw new Exception("currentEnrollment 업데이트 실패: " . $conn->error);
+        }
         $stmt->close();
 
         // 트랜잭션 커밋
         $conn->commit();
 
         // 새로고침(POST-Redirect-GET 패턴)
-        header("Location: enroll.php?" . time()); // 캐시 방지
+        header("Location: enroll.php?" . time());
         exit();
     } catch (Exception $e) {
-        // 에러 발생 시 롤백
         $conn->rollback();
         echo "<script>alert('수강신청 취소 중 오류가 발생했습니다: " . htmlspecialchars($e->getMessage()) . "'); window.location.href='enroll.php';</script>";
         exit();
