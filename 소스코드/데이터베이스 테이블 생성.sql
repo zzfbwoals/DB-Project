@@ -16,7 +16,7 @@ CREATE TABLE Department (
         ON UPDATE CASCADE
 );
 
--- 사용자(User) 테이블 (학번 통일)
+-- 사용자 테이블 
 CREATE TABLE User (
     userID VARCHAR(20) PRIMARY KEY,         -- 학번(아이디)
     userPassword VARCHAR(255) NOT NULL,     -- 비밀번호
@@ -31,7 +31,7 @@ CREATE TABLE User (
         ON UPDATE CASCADE
 );
 
--- 강의(Course) 테이블
+-- 강의 테이블
 CREATE TABLE Course (
     courseID VARCHAR(5) PRIMARY KEY, -- 강의번호
     courseName VARCHAR(100) NOT NULL,-- 강의명
@@ -52,7 +52,7 @@ CREATE TABLE Course (
         ON UPDATE CASCADE
 );
 
--- 강의 시간표(CourseTime) 테이블
+-- 강의 시간표 테이블
 CREATE TABLE CourseTime (
     courseTimeID INT AUTO_INCREMENT PRIMARY KEY, -- 강의시간표 ID
     courseID VARCHAR(5),                         -- 강의번호
@@ -64,7 +64,7 @@ CREATE TABLE CourseTime (
         ON UPDATE CASCADE
 );
 
--- 수강신청(Enroll) 테이블
+-- 수강신청 테이블
 CREATE TABLE Enroll (
     enrollID INT AUTO_INCREMENT PRIMARY KEY, -- 수강신청 ID
     userID VARCHAR(20),                      -- 학번
@@ -78,7 +78,7 @@ CREATE TABLE Enroll (
     UNIQUE (userID, courseID)
 );
 
--- 빌넣 요청(ExtraEnroll) 테이블
+-- 빌넣 요청 테이블
 CREATE TABLE ExtraEnroll (
     extraEnrollID INT AUTO_INCREMENT PRIMARY KEY, -- 빌넣 요청 ID
     userID VARCHAR(20),                           -- 학번
@@ -94,7 +94,7 @@ CREATE TABLE ExtraEnroll (
     UNIQUE (userID, courseID)
 );
 
--- 장바구니(Cart) 테이블
+-- 장바구니 테이블
 CREATE TABLE Cart (
     cartID INT AUTO_INCREMENT PRIMARY KEY,       -- 장바구니 ID
     userID VARCHAR(20),                          -- 학번
