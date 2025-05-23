@@ -11,12 +11,12 @@ if (!isset($_SESSION["userID"]) || $_SESSION["userRole"] !== 'student')
     exit();
 }
 
-// DB 연결
-$conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
+// student_user로 접속
+$conn = new mysqli("localhost", "student_user", "StudentPass123!", "dbproject");
 if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
 $conn->set_charset("utf8");
 
-// 수강신청 처리 함수
+// 수강신청 처리 함수 (트랜잭션 추가)
 function enrollCourse($conn, $studentID, $courseID, &$totalCredits, $timeTable, $studentInfo) {
     // 1. 과목코드 유효성 확인
     $courseCheckQuery = "SELECT courseID, credits, capacity, currentEnrollment FROM Course WHERE courseID = ?";
@@ -102,23 +102,35 @@ function enrollCourse($conn, $studentID, $courseID, &$totalCredits, $timeTable, 
         return "시간표가 충돌합니다. 다른 강의를 선택해주세요.";
     }
     
-    // 6. 수강신청 등록
-    $enrollQuery = "INSERT INTO Enroll (userID, courseID) VALUES (?, ?)";
-    $stmt = $conn->prepare($enrollQuery);
-    $stmt->bind_param("ss", $studentID, $courseID);
-    $enrollSuccess = $stmt->execute();
-    $stmt->close();
-    
-    if ($enrollSuccess) {
+    // 6. 수강신청 등록 (트랜잭션 시작)
+    $conn->begin_transaction();
+    try {
+        // Enroll 테이블에 삽입
+        $enrollQuery = "INSERT INTO Enroll (userID, courseID) VALUES (?, ?)";
+        $stmt = $conn->prepare($enrollQuery);
+        $stmt->bind_param("ss", $studentID, $courseID);
+        $enrollSuccess = $stmt->execute();
+        if (!$enrollSuccess) {
+            throw new Exception("Enroll 삽입 실패: " . $conn->error);
+        }
+        $stmt->close();
+        
         // currentEnrollment 증가
         $updateEnrollmentQuery = "UPDATE Course SET currentEnrollment = currentEnrollment + 1 WHERE courseID = ?";
         $stmt = $conn->prepare($updateEnrollmentQuery);
         $stmt->bind_param("s", $courseID);
-        $stmt->execute();
+        $updateSuccess = $stmt->execute();
+        if (!$updateSuccess) {
+            throw new Exception("currentEnrollment 업데이트 실패: " . $stmt->error);
+        }
         $stmt->close();
+        
+        // 트랜잭션 커밋
+        $conn->commit();
         return true;
-    } else {
-        return "수강신청 중 오류가 발생했습니다. 다시 시도해주세요.";
+    } catch (Exception $e) {
+        $conn->rollback();
+        return "수강신청 중 오류가 발생했습니다: " . htmlspecialchars($e->getMessage());
     }
 }
 
@@ -199,19 +211,49 @@ $timeTable = array(); // 시간표 데이터를 저장하기 위한 배열
 // 수강신청 취소 처리
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID']) && isset($_POST['action']) && $_POST['action'] === 'cancel') {
     $deleteCourseID = $_POST['courseID'];
-    // 본인만 삭제 가능하도록 userID도 조건에 추가
-    $stmt = $conn->prepare("DELETE FROM Enroll WHERE userID = ? AND courseID = ?");
-    $stmt->bind_param("ss", $studentID, $deleteCourseID);
-    $stmt->execute();
-    $stmt->close();
-    // 강의 현재 수강신청 인원 감소
-    $stmt = $conn->prepare("UPDATE Course SET currentEnrollment = currentEnrollment - 1 WHERE courseID = ?");
-    $stmt->bind_param("s", $deleteCourseID);
-    $stmt->execute();
-    $stmt->close();
-    // 새로고침(POST-Redirect-GET 패턴)
-    header("Location: enroll.php");
-    exit();
+
+    // 트랜잭션 시작
+    $conn->begin_transaction();
+
+    try {
+        // Enroll 테이블에서 삭제
+        $stmt = $conn->prepare("DELETE FROM Enroll WHERE userID = ? AND courseID = ?");
+        $stmt->bind_param("ss", $studentID, $deleteCourseID);
+        $success = $stmt->execute();
+        if (!$success) {
+            throw new Exception("Enroll 삭제 실패: " . $conn->error);
+        }
+        $stmt->close();
+
+        // ExtraEnroll 테이블에서 해당 데이터 삭제
+        $stmt = $conn->prepare("DELETE FROM ExtraEnroll WHERE userID = ? AND courseID = ?");
+        $stmt->bind_param("ss", $studentID, $deleteCourseID);
+        $success = $stmt->execute();
+        if (!$success) {
+            throw new Exception("ExtraEnroll 삭제 실패: " . $conn->error);
+        }
+        $stmt->close();
+
+        // 강의 현재 수강신청 인원 감소
+        $stmt = $conn->prepare("UPDATE Course SET currentEnrollment = GREATEST(currentEnrollment - 1, 0) WHERE courseID = ?");
+        $stmt->bind_param("s", $deleteCourseID);
+        $success = $stmt->execute();
+        if (!$success) {
+            throw new Exception("currentEnrollment 업데이트 실패: " . $conn->error);
+        }
+        $stmt->close();
+
+        // 트랜잭션 커밋
+        $conn->commit();
+
+        // 새로고침(POST-Redirect-GET 패턴)
+        header("Location: enroll.php?" . time());
+        exit();
+    } catch (Exception $e) {
+        $conn->rollback();
+        echo "<script>alert('수강신청 취소 중 오류가 발생했습니다: " . htmlspecialchars($e->getMessage()) . "'); window.location.href='enroll.php';</script>";
+        exit();
+    }
 }
 
 // 과목코드로 수강신청 처리 및 신청 버튼 처리

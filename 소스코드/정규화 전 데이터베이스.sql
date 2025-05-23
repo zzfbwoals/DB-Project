@@ -1,34 +1,16 @@
-USE dbproject;
+USE dbproject2;
 
--- 단과대학 테이블
-CREATE TABLE College (
-    collegeID INT AUTO_INCREMENT PRIMARY KEY, -- 단과대학 ID
-    collegeName VARCHAR(50) NOT NULL          -- 단과대학명
-);
-
--- 학과 테이블
-CREATE TABLE Department (
-    departmentID INT AUTO_INCREMENT PRIMARY KEY, -- 학과 ID
-    departmentName VARCHAR(50) NOT NULL,         -- 학과명
-    collegeID INT,                               -- 단과대학 ID
-    FOREIGN KEY (collegeID) REFERENCES College(collegeID)
-        ON DELETE SET NULL
-        ON UPDATE CASCADE
-);
-
--- 사용자(User) 테이블 (학번 통일)
+-- 사용자(User) 테이블
 CREATE TABLE User (
     userID VARCHAR(20) PRIMARY KEY,         -- 학번(아이디)
     userPassword VARCHAR(255) NOT NULL,     -- 비밀번호
     userName VARCHAR(50) NOT NULL,          -- 이름
     adminApproval ENUM('대기', '승인', '거절') DEFAULT '대기', -- 관리자 승인 상태
-    departmentID INT,                       -- 학과 ID
     grade INT,                              -- 학년
     lastSemesterCredits FLOAT,              -- 지난 학기 성적
     userRole VARCHAR(20) NOT NULL,          -- 역할
-    FOREIGN KEY (departmentID) REFERENCES Department(departmentID)
-        ON DELETE SET NULL
-        ON UPDATE CASCADE
+    collegeName VARCHAR(50) NOT NULL,       -- 단과대학명
+    departmentName VARCHAR(50) NOT NULL     -- 학과명
 );
 
 -- 강의(Course) 테이블
@@ -41,26 +23,14 @@ CREATE TABLE Course (
     creditType VARCHAR(20), 		 -- 이수구분
     area VARCHAR(20),       		 -- 영역
     grade VARCHAR(10),               -- 학년
-    departmentID INT,                -- 학과
     credits INT,                     -- 학점
     currentEnrollment INT DEFAULT 0, -- 현재 수강신청 인원
+    dayOfWeek VARCHAR(5),            -- 요일
+    startPeriod VARCHAR(5),          -- 시작시간
+    endPeriod VARCHAR(5),            -- 종료시간
+    departmentName VARCHAR(50),      -- 학과명
     FOREIGN KEY (professorID) REFERENCES User(userID)
         ON DELETE SET NULL
-        ON UPDATE CASCADE,
-    FOREIGN KEY (departmentID) REFERENCES Department(departmentID)
-        ON DELETE SET NULL
-        ON UPDATE CASCADE
-);
-
--- 강의 시간표(CourseTime) 테이블
-CREATE TABLE CourseTime (
-    courseTimeID INT AUTO_INCREMENT PRIMARY KEY, -- 강의시간표 ID
-    courseID VARCHAR(5),                         -- 강의번호
-    dayOfWeek VARCHAR(5),                        -- 요일
-    startPeriod VARCHAR(5),                      -- 시작시간
-    endPeriod VARCHAR(5),                        -- 종료시간
-    FOREIGN KEY (courseID) REFERENCES Course(courseID)
-        ON DELETE CASCADE
         ON UPDATE CASCADE
 );
 
