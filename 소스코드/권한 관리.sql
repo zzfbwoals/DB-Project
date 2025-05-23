@@ -14,7 +14,7 @@ GRANT SELECT ON dbproject.User TO 'professor_user'@'localhost'; -- 학생 정보
 -- student_user: 본인 관련 데이터만 조작 가능
 GRANT SELECT, INSERT, DELETE ON dbproject.Enroll TO 'student_user'@'localhost'; -- 수강신청/취소
 GRANT SELECT, INSERT, DELETE ON dbproject.ExtraEnroll TO 'student_user'@'localhost'; -- 빌넣요청
-GRANT SELECT, UPDATE ON dbproject.Cart TO 'student_user'@'localhost'; -- 장바구니
+GRANT SELECT, UPDATE, DELETE, INSERT ON dbproject.Cart TO 'student_user'@'localhost'; -- 장바구니
 GRANT SELECT, UPDATE ON dbproject.Course TO 'student_user'@'localhost'; -- 강의 조회, 수강취소
 GRANT SELECT ON dbproject.User TO 'student_user'@'localhost'; -- 본인 정보 조회
 GRANT SELECT ON dbproject.CourseTime TO 'student_user'@'localhost'; -- 시간표 조회
