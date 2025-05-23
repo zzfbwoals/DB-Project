@@ -17,7 +17,7 @@ if ($conn->connect_error) die("DB 연결 실패: " . $conn->connect_error);
 $conn->set_charset("utf8");
 
 // 수강신청 처리 함수 (트랜잭션 추가)
-function enrollCourse($conn, $studentID, $courseID, &$totalCredits, $timeTable, $studentInfo) {
+function enrollCourse($conn, $studentID, $courseID, $totalCredits, $timeTable, $studentInfo) {
     // 1. 과목코드 유효성 확인
     $courseCheckQuery = "SELECT courseID, credits, capacity, currentEnrollment FROM Course WHERE courseID = ?";
     $stmt = $conn->prepare($courseCheckQuery);
@@ -52,7 +52,7 @@ function enrollCourse($conn, $studentID, $courseID, &$totalCredits, $timeTable, 
     $newTotalCredits = $totalCredits + $course['credits'];
     $maxCredits = ($studentInfo['lastSemesterCredits'] >= 3.0) ? 19 : 18;
     if ($newTotalCredits > $maxCredits) {
-        return "최대 신청 가능 학점을 초과했습니다. (최대: $maxCredits 학점)";
+        return "최대 신청 가능 학점을 초과했습니다. (최대: $maxCredits 학점, 현재: $totalCredits 학점, 추가 시도: {$course['credits']} 학점)";
     }
     
     // 5. 시간표 충돌 확인
@@ -208,6 +208,15 @@ $totalCredits = 0;
 $totalCourses = 0;
 $timeTable = array(); // 시간표 데이터를 저장하기 위한 배열
 
+// 수강신청 내역에서 총 학점 계산
+if ($enrolledCourses->num_rows > 0) {
+    $totalCourses = $enrolledCourses->num_rows;
+    while ($course = $enrolledCourses->fetch_assoc()) {
+        $totalCredits += $course['credits'];
+    }
+    $enrolledCourses->data_seek(0); // 포인터 리셋
+}
+
 // 수강신청 취소 처리
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID']) && isset($_POST['action']) && $_POST['action'] === 'cancel') {
     $deleteCourseID = $_POST['courseID'];
@@ -260,6 +269,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID']) && isset(
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quickEnrollCourseID']) && isset($_POST['action']) && ($_POST['action'] === 'quickEnroll' || $_POST['action'] === 'enroll')) {
     $quickCourseID = trim($_POST['quickEnrollCourseID']);
     
+    // 현재 수강신청 학점을 다시 계산
+    $totalCredits = 0;
+    $enrolledCourses->data_seek(0); // 포인터 리셋
+    while ($course = $enrolledCourses->fetch_assoc()) {
+        $totalCredits += $course['credits'];
+    }
+    $enrolledCourses->data_seek(0); // 포인터 다시 리셋
+    
     $result = enrollCourse($conn, $studentID, $quickCourseID, $totalCredits, $timeTable, $studentInfo);
     
     if ($result === true) {
@@ -278,8 +295,6 @@ if ($enrolledCourses->num_rows > 0) {
     $totalCourses = $enrolledCourses->num_rows;
     
     while ($course = $enrolledCourses->fetch_assoc()) {
-        $totalCredits += $course['credits'];
-
         // courseID를 기반으로 고유한 색상 생성
         if (!isset($courseColors[$course['courseID']])) {
             // courseID를 해시하여 Hue 값 생성 (0~360)
@@ -950,7 +965,6 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1') { // 'sear
                 </div>
             </div>
 
-            <!-- 수강신청 내역 및 시간표 -->
             <!-- 수강신청 내역 및 시간표 -->
             <div class="contentWrapper">
                 <div class="courseList">

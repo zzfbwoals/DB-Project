@@ -221,7 +221,7 @@ $conn->close();
                     <input type="password" name="userPassword" placeholder="비밀번호를 입력하세요" required>
                     <button type="submit" class="loginButton">로그인</button>
                 </form>
-                <a href="signup.html" class="linkToSign">아직 계정이 없으신가요? 회원가입</a>
+                <a href="signup.php" class="linkToSign">아직 계정이 없으신가요? 회원가입</a>
             </div>
         </div>
 
