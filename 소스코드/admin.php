@@ -43,7 +43,7 @@ $result = $conn->query($sql);
 
 if ($_SERVER["REQUEST_METHOD"] === "POST")
 {
-    // 사용자 승인 처리
+    // 개별 승인 처리
     if (isset($_POST["approve"]))
     {
         $stmt = $conn->prepare("UPDATE User SET adminApproval = '승인' WHERE userID = ?");
@@ -51,13 +51,38 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
         $stmt->execute();
         $stmt->close();
     }
-    // 사용자 거절 처리
+    // 개별 거절 처리
     elseif (isset($_POST["reject"]))
     {
         $stmt = $conn->prepare("UPDATE User SET adminApproval = '거절' WHERE userID = ?");
         $stmt->bind_param("s", $_POST["reject"]);
         $stmt->execute();
         $stmt->close();
+    }
+    // 일괄 승인/거절 처리
+    elseif (isset($_POST["bulk_approve"]) || isset($_POST["bulk_reject"]))
+    {
+        if (isset($_POST["selected_items"]) && !empty($_POST["selected_items"]))
+        {
+            $selectedItems = $_POST["selected_items"];
+            $status = isset($_POST["bulk_approve"]) ? '승인' : '거절';
+            $placeholders = implode(",", array_fill(0, count($selectedItems), "?"));
+            $stmt = $conn->prepare("UPDATE User SET adminApproval = ? WHERE userID IN ($placeholders)");
+            $types = "s" . str_repeat("s", count($selectedItems));
+            $params = [$status];
+
+            foreach ($selectedItems as $userID)
+            {
+                $params[] = $userID;
+            }
+
+            $stmt->bind_param($types, ...$params);
+            $stmt->execute();
+            $stmt->close();
+        }
+
+        header("Location: admin.php");
+        exit();
     }
 }
 ?>
@@ -178,6 +203,40 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
             background-color: #ff5252;
         }
 
+        .bulk-buttons
+        {
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        .bulk-buttons button
+        {
+            padding: 8px 20px;
+            margin: 0 5px;
+        }
+
+        .bulk-approve
+        {
+            background-color: #00a8ff;
+            color: white;
+        }
+
+        .bulk-approve:hover
+        {
+            background-color: #0090dd;
+        }
+
+        .bulk-reject
+        {
+            background-color: #ff6b6b;
+            color: white;
+        }
+
+        .bulk-reject:hover
+        {
+            background-color: #ff5252;
+        }
+
         .header
         {
             display: flex;
@@ -238,35 +297,43 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
         if ($result->num_rows > 0)
         {
         ?>
-            <table>
-                <tr>
-                    <th>학번</th>
-                    <th>이름</th>
-                    <th>역할</th>
-                    <th>학년</th>
-                    <th>회원가입 승인/거절</th>
-                </tr>
-
-                <?php
-                while ($row = $result->fetch_assoc())
-                {
-                ?>
+            <form method="post" id="bulkForm">
+                <table>
                     <tr>
-                        <td><?= htmlspecialchars($row["userID"]) ?></td>
-                        <td><?= htmlspecialchars($row["userName"]) ?></td>
-                        <td><?= htmlspecialchars($row["userRole"]) ?></td>
-                        <td><?= htmlspecialchars($row["grade"] ?? "해당없음") ?></td>
-                        <td>
-                            <form method="post">
-                                <button type="submit" name="approve" value="<?= htmlspecialchars($row["userID"]) ?>">승인</button>
-                                <button type="submit" name="reject" value="<?= htmlspecialchars($row["userID"]) ?>">거절</button>
-                            </form>
-                        </td>
+                        <th><input type="checkbox" id="selectAll"></th>
+                        <th>학번</th>
+                        <th>이름</th>
+                        <th>역할</th>
+                        <th>학년</th>
+                        <th>회원가입 승인/거절</th>
                     </tr>
-                <?php
-                }
-                ?>
-            </table>
+
+                    <?php
+                    while ($row = $result->fetch_assoc())
+                    {
+                    ?>
+                        <tr>
+                            <td><input type="checkbox" name="selected_items[]" value="<?= htmlspecialchars($row["userID"]) ?>"></td>
+                            <td><?= htmlspecialchars($row["userID"]) ?></td>
+                            <td><?= htmlspecialchars($row["userName"]) ?></td>
+                            <td><?= htmlspecialchars($row["userRole"]) ?></td>
+                            <td><?= htmlspecialchars($row["grade"] ?? "해당없음") ?></td>
+                            <td>
+                                <form method="post" style="display:inline;">
+                                    <button type="submit" name="approve" value="<?= htmlspecialchars($row["userID"]) ?>">승인</button>
+                                    <button type="submit" name="reject" value="<?= htmlspecialchars($row["userID"]) ?>">거절</button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php
+                    }
+                    ?>
+                </table>
+                <div class="bulk-buttons">
+                    <button type="submit" name="bulk_approve" class="bulk-approve" onclick="return confirm('선택한 항목을 일괄 승인하시겠습니까?');">일괄 승인</button>
+                    <button type="submit" name="bulk_reject" class="bulk-reject" onclick="return confirm('선택한 항목을 일괄 거절하시겠습니까?');">일괄 거절</button>
+                </div>
+            </form>
         <?php
         }
         else
@@ -279,6 +346,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
         }
         ?>
     </div>
+
+    <script>
+        // 전체 선택 체크박스 처리
+        document.getElementById('selectAll').addEventListener('change', function()
+        {
+            const checkboxes = document.querySelectorAll('input[name="selected_items[]"]');
+            checkboxes.forEach(checkbox =>
+            {
+                checkbox.checked = this.checked;
+            });
+        });
+    </script>
 </body>
 </html>
 <?php
