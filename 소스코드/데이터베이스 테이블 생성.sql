@@ -1,3 +1,6 @@
+-- 데이터베이스 생성
+CREATE DATABASE dbproject;
+
 USE dbproject;
 
 -- 단과대학 테이블

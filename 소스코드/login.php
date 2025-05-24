@@ -6,7 +6,7 @@
 session_start();
 
 // DB 연결
-$conn = new mysqli("localhost", "dbproject_user", "Gkrrytlfj@@33", "dbproject");
+$conn = new mysqli("localhost", "auth_user", "AuthPass123!", "dbproject");
 if ($conn->connect_error)
 {
     die("DB 연결 실패: " . $conn->connect_error);
