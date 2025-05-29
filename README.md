@@ -49,7 +49,7 @@
 
 ※ 순서대로 실행하지 않으면 외래키 제약 조건으로 인해 오류 발생 가능
 
-### 3. 사용자 계정 정보
+### 4. 사용자 계정 정보
 
 | 역할  | ID       | 비밀번호 |
 | --- | -------- | ---- |
@@ -57,7 +57,7 @@
 | 교수  | 20024001 | rhksflwk |
 | 학생  | 20214045 | rhksflwk |
 
-### 4. 실행 경로
+### 5. 실행 경로
 
 * 로그인: [http://localhost/login.php](http://localhost/login.php)
 * 회원가입: [http://localhost/signup.php](http://localhost/signup.php)
