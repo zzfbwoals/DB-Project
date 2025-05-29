@@ -281,6 +281,32 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
             background-color: #ff5252;
         }
 
+        .search-form button {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .search-form button[type="submit"] {
+            background-color: #00a8ff;
+            color: #fff;
+        }
+
+        .search-form button[type="submit"]:hover {
+            background-color: #0090dd;
+        }
+
+        .search-form .reset-button {
+            background-color: #f2f2f2;
+            color: #333;
+        }
+        
+        .search-form .reset-button:hover {
+            background-color: #e0e0e0;
+        }
+
         .bulk-buttons
         {
             margin-top: 10px;
@@ -434,9 +460,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
                 사유를 키워드로 검색할 수 있습니다.
             </div>
             <div class="search-form">
-                <form method="get">
-                    <input type="text" name="search" placeholder="사유로 검색" value="<?= htmlspecialchars($searchKeyword) ?>">
+                <form method="get" id="profSearchForm">
+                    <input type="text" name="search" placeholder="사유로 검색" 
+                        value="<?= htmlspecialchars($searchKeyword) ?>">
                     <button type="submit">검색</button>
+                    <button type="button" class="reset-button" onclick="resetSearch()">초기화</button>
                 </form>
             </div>
         </div>
@@ -511,6 +539,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
                 checkbox.checked = this.checked;
             });
         });
+
+        // 검색 초기화
+        function resetSearch() 
+        {
+            // GET 파라미터 없이 페이지만 리로드
+            window.location.href = window.location.pathname;
+        }
+
     </script>
 </body>
 </html>
