@@ -33,14 +33,28 @@ $professorResult = $stmt->get_result();
 $professorInfo = $professorResult->fetch_assoc();
 $stmt->close();
 
+// 검색 키워드 처리
+$searchKeyword = '';
+if (isset($_GET['search']) && !empty($_GET['search'])) {
+    $searchKeyword = $_GET['search'];
+}
+
 // 해당 교수의 과목에 대한 빌넣요청 조회
 $sql = "SELECT e.userID, e.courseID, e.reason, e.extraEnrollStatus, u.userName, c.courseName 
         FROM ExtraEnroll e
         JOIN User u ON e.userID = u.userID
         JOIN Course c ON e.courseID = c.courseID
         WHERE e.extraEnrollStatus = '대기' AND c.professorID = ?";
+if ($searchKeyword) {
+    $sql .= " AND e.reason LIKE ?";
+}
 $stmt = $conn->prepare($sql);
-$stmt->bind_param("s", $professorID);
+if ($searchKeyword) {
+    $likeKeyword = '%' . $searchKeyword . '%';
+    $stmt->bind_param("ss", $professorID, $likeKeyword);
+} else {
+    $stmt->bind_param("s", $professorID);
+}
 $stmt->execute();
 $result = $stmt->get_result();
 $stmt->close();
@@ -145,7 +159,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
             $stmt->close();
         }
         
-        header("Location: professor.php");
+        header("Location: professor.php" . ($searchKeyword ? "?search=" . urlencode($searchKeyword) : ""));
         exit();
     }
 }
@@ -339,6 +353,62 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
             color: #888;
             font-size: 16px;
         }
+
+        .search-container
+        {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .search-form
+        {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .search-form input[type="text"]
+        {
+            padding: 8px;
+            width: 200px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .search-form button
+        {
+            padding: 8px 15px;
+            background-color: #00a8ff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .search-form button:hover
+        {
+            background-color: #0090dd;
+        }
+
+        .info-text
+        {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .info-text img
+        {
+            width: 16px;
+            height: 16px;
+        }
     </style>
 </head>
 <body>
@@ -356,6 +426,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
         </div>
 
         <h2>빌넣요청 관리</h2>
+
+        <!-- 검색 컨테이너 추가 -->
+        <div class="search-container">
+            <div class="info-text">
+                <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2IDE2IiBmaWxsPSIjOTk5Ij48cGF0aCBkPSJNOCAxQzQuMTQgMSAxIDQuMTQgMSA4QzEgMTEuODYgNC4xNCAxNSA4IDE1QzExLjg2IDE1IDE1IDExLjg2IDE1IDhDMTUgNC4xNCAxMS44NiAxIDggMU0gOCAxNkM0LjY4NiAxNiAyIDE0LjMxNCAyIDEwQzIgNS42ODYgNC42ODYgMiA4IDJDMTEuMzEzIDIgMTQgNS42ODYgMTQgMTBDMTQgMTQuMzE0IDExLjMxMyAxNiA4IDE2Ij48L3BhdGg+PHBhdGggZD0iTTcgM0g5VjlIN1YzWk0gNyAxMUg5VjEzSDdWMTFaIj48L3BhdGg+PC9zdmc+" alt="정보">
+                사유를 키워드로 검색할 수 있습니다.
+            </div>
+            <div class="search-form">
+                <form method="get">
+                    <input type="text" name="search" placeholder="사유로 검색" value="<?= htmlspecialchars($searchKeyword) ?>">
+                    <button type="submit">검색</button>
+                </form>
+            </div>
+        </div>
 
         <?php
         if ($result->num_rows > 0)

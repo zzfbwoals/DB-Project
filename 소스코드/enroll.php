@@ -666,7 +666,6 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1')
             padding: 20px;
         }
 
-        /* 기존 .section 스타일 수정 */
         .section
         {
             width: 100%;
