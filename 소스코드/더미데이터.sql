@@ -26,8 +26,8 @@ INSERT INTO Department (departmentName, collegeID) VALUES
 
 -- 사용자
 INSERT INTO User (userID, userPassword, userName, adminApproval, departmentID, grade, lastSemesterCredits, userRole) VALUES
-('관리자', '$2b$12$0dgpA80d3h56OcPBb4gTQeKcGh1e2qZ9ym0aLJYWLUKvUP1SJBuMO', '관리자', '승인', 34, 3, 3.8, 'admin'),
-('20214045', '$2b$12$0dgpA80d3h56OcPBb4gTQeKcGh1e2qZ9ym0aLJYWLUKvUP1SJBuMO', '홍길동', '승인', 34, 3, 3.8, 'student'),
+('관리자', '$2b$12$0dgpA80d3h56OcPBb4gTQeKcGh1e2qZ9ym0aLJYWLUKvUP1SJBuMO', '관리자', '승인', NULL, NULL, NULL, 'admin'),
+('20214045', '$2b$12$0dgpA80d3h56OcPBb4gTQeKcGh1e2qZ9ym0aLJYWLUKvUP1SJBuMO', '류재민', '승인', 34, 3, 4.4, 'student'),
 ('20024001', '$2b$12$0dgpA80d3h56OcPBb4gTQeKcGh1e2qZ9ym0aLJYWLUKvUP1SJBuMO', '김수현', '승인', 34, NULL, NULL, 'professor'),
 ('20024002', '$2b$12$0dgpA80d3h56OcPBb4gTQeKcGh1e2qZ9ym0aLJYWLUKvUP1SJBuMO', '김대영', '승인', 34, NULL, NULL, 'professor'),
 ('20024003', '$2b$12$0dgpA80d3h56OcPBb4gTQeKcGh1e2qZ9ym0aLJYWLUKvUP1SJBuMO', '김명숙', '승인', 34, NULL, NULL, 'professor'),

@@ -69,9 +69,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['update'])) {
 
     // 수정 실행 및 결과 처리
     if ($stmt->execute()) {
-        echo "<script>alert('비밀번호가 수정되었습니다.'); location.href='myPage.php';</script>";
+        echo "<script>alert('비밀번호가 변경되었습니다.'); location.href='myPage.php';</script>";
     } else {
-        echo "<script>alert('회원 정보 수정 실패: " . addslashes($stmt->error) . "'); history.back();</script>";
+        echo "<script>alert('비밀번호 변경 실패: " . addslashes($stmt->error) . "'); history.back();</script>";
     }
     $stmt->close();
 }
@@ -227,7 +227,7 @@ $conn->close();
                        class="readonly-field" readonly>
             </div>
 
-            <button type="submit" name="update" class="updateButton">정보 수정</button>
+            <button type="submit" name="update" class="updateButton">비밀번호 변경</button>
             <button type="submit" name="delete" class="deleteButton" 
                     onclick="return confirm('정말 탈퇴하시겠습니까?');">회원 탈퇴</button>
         </form>

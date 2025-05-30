@@ -10,6 +10,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON dbproject.* TO 'admin_user'@'localhost'
 GRANT SELECT, UPDATE ON dbproject.ExtraEnroll TO 'professor_user'@'localhost';  		-- 빌넣요청 승인/거절
 GRANT SELECT, INSERT ON dbproject.Enroll TO 'professor_user'@'localhost';       		-- 수강신청 추가
 GRANT SELECT, UPDATE, DELETE ON dbproject.Course TO 'professor_user'@'localhost';       -- currentEnrollment 수정
+GRANT INSERT ON dbproject.Course TO 'professor_user'@'localhost';                       -- 강의 추가
+GRANT INSERT ON dbproject.CourseTime TO 'professor_user'@'localhost';                   -- 강의 시간표 추가
 GRANT SELECT ON dbproject.Department TO 'professor_user'@'localhost';                   -- 강의 추가의 학과 조회
 GRANT SELECT ON dbproject.User TO 'professor_user'@'localhost';                 		-- 학생 정보 조회
 

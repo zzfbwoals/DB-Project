@@ -213,8 +213,22 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
         $times = isset($_POST["times"]) ? $_POST["times"] : [];
 
         // 입력 유효성 검사
-        if (empty($courseID) || empty($courseName) || empty($creditType) || empty($grade) || empty($departmentID) || empty($credits) || empty($capacity) || empty($times)) {
-            echo "<script>alert('모든 필수 필드를 입력해주세요.');</script>";
+        $validInput = !empty($courseID) && !empty($courseName) && !empty($creditType) && 
+                    !empty($grade) && !empty($departmentID) && !empty($credits) && 
+                    !empty($capacity);
+        $validTimes = false; // 이 변수는 최소 하나 이상의 시간 항목이 있는지 여부를 체크
+        if (!empty($times)) {
+            foreach ($times as $time) {
+                if (!empty($time["dayOfWeek"]) && !empty($time["startPeriod"]) && !empty($time["endPeriod"])) {
+                    $validTimes = true; 
+                    break;
+                }
+            }
+        }
+
+        if (!$validInput || !$validTimes) {
+            echo "<script>alert('모든 필수 필드를 올바르게 입력해주세요.'); setTimeout(function() { window.location.href = 'professor.php" . ($searchKeyword ? "?search=" . urlencode($searchKeyword) : "") . "'; }, 2000);</script>";
+            exit(); // 추가
         } else {
             // courseID 중복 체크
             $checkCourse = $conn->prepare("SELECT COUNT(*) FROM Course WHERE courseID = ?");
@@ -225,41 +239,45 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
             $checkCourse->close();
 
             if ($count > 0) {
-                echo "<script>alert('이미 존재하는 강의번호입니다.');</script>";
+                echo "<script>alert('이미 존재하는 강의번호입니다.'); setTimeout(function() { window.location.href = 'professor.php" . ($searchKeyword ? "?search=" . urlencode($searchKeyword) : "") . "'; }, 2000);</script>";
+                exit(); // 추가
             } else {
                 // 시간 유효성 검사 (endPeriod가 startPeriod보다 빠르지 않도록)
-                $validTimes = true;
+                $areTimePeriodsValid = true; // 변수명 변경하여 명확화
                 foreach ($times as $time) {
                     $start = $time["startPeriod"];
                     $end = $time["endPeriod"];
                     if (!empty($start) && !empty($end)) {
                         // 숫자 교시 비교
                         if (is_numeric($start) && is_numeric($end) && (int)$end < (int)$start) {
-                            $validTimes = false;
+                            $areTimePeriodsValid = false;
                             break;
                         }
-                        // A/B 교시 비교 (예: 2A > 2B는 유효, 3A < 2B는 무효)
+                        // A/B 교시 비교
                         if (strpos($start, 'A') !== false || strpos($start, 'B') !== false) {
                             $startNum = (int)str_replace(['A', 'B'], '', $start);
                             $endNum = (int)str_replace(['A', 'B'], '', $end);
                             $startLetter = str_replace($startNum, '', $start);
                             $endLetter = str_replace($endNum, '', $end);
                             if ($startNum > $endNum || ($startNum == $endNum && $startLetter == 'B' && $endLetter == 'A')) {
-                                $validTimes = false;
+                                $areTimePeriodsValid = false;
                                 break;
                             }
                         }
                     }
                 }
 
-                if (!$validTimes) {
-                    echo "<script>alert('종료 교시가 시작 교시보다 빠를 수 없습니다.');</script>";
+                if (!$areTimePeriodsValid) {
+                    echo "<script>alert('종료 교시가 시작 교시보다 빠를 수 없습니다.'); setTimeout(function() { window.location.href = 'professor.php" . ($searchKeyword ? "?search=" . urlencode($searchKeyword) : "") . "'; }, 2000);</script>";
+                    exit(); // 추가
                 } else {
                     // 트랜잭션 시작
                     $conn->begin_transaction();
                     try {
                         // Course 테이블에 삽입
                         $stmt = $conn->prepare("INSERT INTO Course (courseID, courseName, classroom, professorID, capacity, creditType, area, grade, departmentID, credits, currentEnrollment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)");
+                        // $area가 PHP null이면 bind_param의 's' 타입은 보통 빈 문자열로 처리합니다.
+                        // Course 테이블의 area 컬럼이 NULL을 허용하고 빈 문자열도 괜찮다면 이 방식은 문제 없습니다.
                         $stmt->bind_param("ssssissssi", $courseID, $courseName, $classroom, $professorID, $capacity, $creditType, $area, $grade, $departmentID, $credits);
                         $stmt->execute();
                         $stmt->close();
@@ -279,10 +297,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
 
                         // 트랜잭션 커밋
                         $conn->commit();
+                        echo "<script>alert('강의가 성공적으로 추가되었습니다.'); setTimeout(function() { window.location.href = 'professor.php" . ($searchKeyword ? "?search=" . urlencode($searchKeyword) : "") . "'; }, 2000);</script>";
+                        exit(); // 추가
                     } catch (Exception $e) {
                         // 오류 발생 시 롤백
                         $conn->rollback();
-                        echo "<script>alert('강의 추가 중 오류가 발생했습니다: " . addslashes($e->getMessage()) . "');</script>";
+                        echo "<script>alert('강의 추가 중 오류가 발생했습니다: " . addslashes($e->getMessage()) . "'); setTimeout(function() { window.location.href = 'professor.php" . ($searchKeyword ? "?search=" . urlencode($searchKeyword) : "") . "'; }, 2000);</script>";
+                        exit(); // 추가
                     }
                 }
             }
@@ -793,7 +814,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
         <!-- 강의 목록 관리 -->
         <div class="course-list-header">
             <h2 class="course-list-title">내 강의 목록</h2>
-            <button name="add_course_button" class="add-course-btn" onclick="openModal()">강의 추가</button>
+            <button type="button" name="add_course_button" class="add-course-btn" onclick="openModal()">강의 추가</button>
         </div>
         <?php
         if ($courseResult->num_rows > 0)
@@ -964,9 +985,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
                                 <option value="9">9교시</option>
                                 <option value="9A">9A</option>
                                 <option value="9B">9B</option>
-                                <option value="10">10교시</option>
-                                <option value="10A">10A</option>
-                                <option value="10B">10B</option>
                             </select>
                             <select name="times[0][endPeriod]" required>
                                 <option value="" disabled selected>종료 교시</option>
@@ -997,9 +1015,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
                                 <option value="9">9교시</option>
                                 <option value="9A">9A</option>
                                 <option value="9B">9B</option>
-                                <option value="10">10교시</option>
-                                <option value="10A">10A</option>
-                                <option value="10B">10B</option>
                             </select>
                         </div>
                     </div>
@@ -1012,40 +1027,41 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
 
     <script>
         // 전체 선택 체크박스 처리
-        document.getElementById('selectAll').addEventListener('change', function()
-        {
+        document.getElementById('selectAll').addEventListener('change', function() {
             const checkboxes = document.querySelectorAll('input[name="selected_items[]"]');
-            checkboxes.forEach(checkbox =>
-            {
+            checkboxes.forEach(checkbox => {
                 checkbox.checked = this.checked;
             });
         });
 
         // 검색 초기화
-        function resetSearch() 
-        {
-            // GET 파라미터 없이 페이지만 리로드
+        function resetSearch() {
             window.location.href = window.location.pathname;
         }
 
-        // 모달창 열기/닫기
+        // 모달창 열기
         function openModal() {
-            document.getElementById('addCourseModal').style.display = 'flex';
+            const modal = document.getElementById('addCourseModal');
+            modal.style.display = 'flex';
         }
 
+        // 모달창 닫기
         function closeModal() {
-            document.getElementById('addCourseModal').style.display = 'none';
+            const modal = document.getElementById('addCourseModal');
+            modal.style.display = 'none';
             document.getElementById('addCourseForm').reset();
             const timeEntries = document.getElementById('timeEntries');
             while (timeEntries.children.length > 1) {
                 timeEntries.removeChild(timeEntries.lastChild);
             }
+            timeEntryCount = 1; // 시간 입력 카운터 초기화
         }
 
         // 모달 외부 클릭 시 닫기
         window.onclick = function(event) {
             const modal = document.getElementById('addCourseModal');
-            if (event.target === modal) {
+            const modalContent = document.querySelector('.modal-content');
+            if (event.target === modal && !modalContent.contains(event.target)) {
                 closeModal();
             }
         }
@@ -1129,6 +1145,36 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
             timeEntries.appendChild(newEntry);
             timeEntryCount++;
         }
+
+        // 폼 제출 시 클라이언트 측 검증
+        document.getElementById('addCourseForm').addEventListener('submit', function(event) {
+            const courseID = document.querySelector('input[name="courseID"]').value;
+            const courseName = document.querySelector('input[name="courseName"]').value;
+            const creditType = document.querySelector('select[name="creditType"]').value;
+            const area = document.querySelector('select[name="area"]').value;
+            const grade = document.querySelector('select[name="grade"]').value;
+            const departmentID = document.querySelector('select[name="departmentID"]').value;
+            const credits = document.querySelector('input[name="credits"]').value;
+            const capacity = document.querySelector('input[name="capacity"]').value;
+            const timeEntries = document.querySelectorAll('.time-entry');
+            let validTimes = false;
+
+            // 시간 항목 검증
+            for (let entry of timeEntries) {
+                const day = entry.querySelector('select[name*="[dayOfWeek]"]').value;
+                const start = entry.querySelector('select[name*="[startPeriod]"]').value;
+                const end = entry.querySelector('select[name*="[endPeriod]"]').value;
+                if (day && start && end) {
+                    validTimes = true;
+                    break;
+                }
+            }
+
+            if (!courseID || !courseName || !creditType || !area || !grade || !departmentID || !credits || !capacity || !validTimes) {
+                event.preventDefault();
+                alert('모든 필수 필드를 올바르게 입력해주세요.');
+            }
+        });
     </script>
 </body>
 </html>
