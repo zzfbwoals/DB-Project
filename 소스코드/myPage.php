@@ -43,19 +43,16 @@ if (!$user) {
 // ---------------------------------------
 
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['update'])) {
-    // 교수일 경우 학년, 이수학점은 NULL로 유지
-    if ($user['userRole'] === 'professor') {
-        $grade = NULL;
-        $lastSemesterCredits = NULL;
-    } else {
-        $grade = $_POST['grade'];
-        $lastSemesterCredits = $_POST['lastSemesterCredits'];
-    }
-
     // 비밀번호 변경 처리
     $newPassword = !empty($_POST['newPassword']) ? $_POST['newPassword'] : null;
     $confirmPassword = !empty($_POST['confirmPassword']) ? $_POST['confirmPassword'] : null;
     $userPassword = $user['userPassword']; // 기본값은 기존 비밀번호
+
+    // 비밀번호 입력 여부 확인
+    if (!$newPassword && !$confirmPassword) {
+        echo "<script>alert('비밀번호를 입력해주세요.'); history.back();</script>";
+        exit();
+    }
 
     if ($newPassword && $confirmPassword) {
         if ($newPassword === $confirmPassword) {
@@ -66,15 +63,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['update'])) {
         }
     }
 
-    // 사용자 정보 수정 (이름과 학과는 수정 불가)
-    $stmt = $conn->prepare("UPDATE User SET 
-        userPassword = ?, grade = ?, lastSemesterCredits = ? 
-        WHERE userID = ?");
-    $stmt->bind_param("siis", $userPassword, $grade, $lastSemesterCredits, $userID);
+    // 사용자 정보 수정 (이름, 학과, 학년, 전학기 학점은 수정 불가)
+    $stmt = $conn->prepare("UPDATE User SET userPassword = ? WHERE userID = ?");
+    $stmt->bind_param("ss", $userPassword, $userID);
 
     // 수정 실행 및 결과 처리
     if ($stmt->execute()) {
-        echo "<script>alert('회원 정보가 수정되었습니다.'); location.href='myPage.php';</script>";
+        echo "<script>alert('비밀번호가 수정되었습니다.'); location.href='myPage.php';</script>";
     } else {
         echo "<script>alert('회원 정보 수정 실패: " . addslashes($stmt->error) . "'); history.back();</script>";
     }
@@ -226,10 +221,10 @@ $conn->close();
 
             <div id="studentfields" class="studentOnly">
                 <input type="number" name="grade" value="<?php echo htmlspecialchars($user['grade']); ?>" 
-                       placeholder="학년 (숫자)" min="1" max="5">
+                       class="readonly-field" readonly>
                 <input type="number" name="lastSemesterCredits" step="0.01" 
                        value="<?php echo htmlspecialchars($user['lastSemesterCredits']); ?>" 
-                       placeholder="전학기 학점 (예: 4.3)" min="0" max="4.5">
+                       class="readonly-field" readonly>
             </div>
 
             <button type="submit" name="update" class="updateButton">정보 수정</button>

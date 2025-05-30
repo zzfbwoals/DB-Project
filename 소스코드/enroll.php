@@ -698,13 +698,19 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1')
             border-bottom: 1px solid #eee;
         }
 
+        .header-buttons
+        {
+            display: flex;
+            gap: 10px;
+        }
+
         .studentInfo 
         {
             font-size: 14px;
             color: #666;
         }
 
-        .logoutButton 
+        .logoutButton, .mypageButton
         {
             padding: 8px 15px;
             background-color: #f2f2f2;
@@ -714,7 +720,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1')
             font-size: 14px;
         }
 
-        .logoutButton:hover 
+        .logoutButton:hover, .mypageButton:hover
         {
             background-color: #e0e0e0;
         }
@@ -1049,7 +1055,10 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1')
                     <strong><?= htmlspecialchars($studentInfo['userName']) ?></strong> 님 환영합니다
                     <span>(학과: <?= htmlspecialchars($studentInfo['departmentName']) ?>, 학번: <?= htmlspecialchars($studentID) ?>)</span>
                 </div>
-                <a href="login.php" class="logoutButton">로그아웃</a>
+                <div class="header-buttons">
+                    <a href="myPage.php" class="mypageButton">마이페이지</a>
+                    <a href="login.php" class="logoutButton">로그아웃</a>
+                </div>
             </div>
 
             <!-- 수강신청 현황 정보 -->

@@ -481,13 +481,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
             border-bottom: 1px solid #eee;
         }
 
+        .header-buttons
+        {
+            display: flex;
+            gap: 10px;
+        }
+
         .professorInfo
         {
             font-size: 14px;
             color: #666;
         }
 
-        .logoutButton
+        .logoutButton, .mypageButton
         {
             padding: 8px 15px;
             background-color: #f2f2f2;
@@ -497,7 +503,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
             font-size: 14px;
         }
 
-        .logoutButton:hover
+        .logoutButton:hover, .mypageButton:hover
         {
             background-color: #e0e0e0;
         }
@@ -701,7 +707,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
             <div class="professorInfo">
                 <strong><?= htmlspecialchars($professorInfo['userName']) ?></strong> 교수님 환영합니다
             </div>
-            <a href="login.php" class="logoutButton">로그아웃</a>
+            <div class="header-buttons">
+                <a href="myPage.php" class="mypageButton">마이페이지</a>
+                <a href="login.php" class="logoutButton">로그아웃</a>
+            </div>
         </div>
 
         <h2>빌넣요청 관리</h2>
@@ -1012,7 +1021,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
             });
         });
 
-<<<<<<< HEAD
         // 검색 초기화
         function resetSearch() 
         {
@@ -1020,7 +1028,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
             window.location.href = window.location.pathname;
         }
 
-=======
         // 모달창 열기/닫기
         function openModal() {
             document.getElementById('addCourseModal').style.display = 'flex';
@@ -1122,7 +1129,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST")
             timeEntries.appendChild(newEntry);
             timeEntryCount++;
         }
->>>>>>> f85109f (교수 페이지 기능 추가)
     </script>
 </body>
 </html>
