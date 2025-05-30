@@ -4,7 +4,7 @@ CREATE USER 'student_user'@'localhost' IDENTIFIED BY 'StudentPass123!'; -- enrol
 CREATE USER 'auth_user'@'localhost' IDENTIFIED BY 'AuthPass123!';       -- login.php, signup.php 용 계정
 
 -- admin_user: 대부분의 테이블에 대해 모든 권한 부여 (User 승인/거절 등)
-GRANT SELECT, INSERT, UPDATE, DELETE ON dbproject.* TO 'admin_user'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbproject.* TO 'admin_user'@'localhost'
 
 -- professor_user: ExtraEnroll, Enroll, Course 관련 권한 부여
 GRANT SELECT, UPDATE ON dbproject.ExtraEnroll TO 'professor_user'@'localhost';  		-- 빌넣요청 승인/거절
@@ -26,6 +26,7 @@ GRANT SELECT ON dbproject.College TO 'student_user'@'localhost';                
 -- auth_user: 로그인, 회원가입 관련 권한 부여
 GRANT SELECT ON dbproject.User TO 'auth_user'@'localhost';          -- 로그인 및 중복 확인용
 GRANT INSERT ON dbproject.User TO 'auth_user'@'localhost';          -- 회원가입용
+GRANT UPDATE, DELETE ON dbproject.User TO 'auth_user'@'localhost';  -- 정보수정/회원탈퇴 용
 GRANT SELECT ON dbproject.Department TO 'auth_user'@'localhost';    -- 회원가입 폼 구성용
 GRANT SELECT ON dbproject.College TO 'auth_user'@'localhost';       -- 회원가입 폼 구성용
 
