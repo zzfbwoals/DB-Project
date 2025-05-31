@@ -14,8 +14,10 @@
 ├── 데이터베이스 테이블 생성.sql
 ├── 권한 관리.sql
 ├── 더미데이터.sql
+├── 트리거 및 프로시저.sql
 ├── login.php
 ├── signup.php
+├── myPage.php
 ├── enroll.php
 ├── extraEnroll.php
 ├── professor.php
@@ -45,7 +47,8 @@
 1. Workbench → `Local instance MySQL` 연결
 2. `데이터베이스 테이블 생성.sql` 실행
 3. `더미데이터.sql` 실행
-4. `권한 관리.sql` 실행
+4. `트리거 및 프로시저.sql` 실행
+5. `권한 관리.sql` 실행
 
 ※ 순서대로 실행하지 않으면 외래키 제약 조건으로 인해 오류 발생 가능
 
@@ -61,6 +64,7 @@
 
 * 로그인: [http://localhost/login.php](http://localhost/login.php)
 * 회원가입: [http://localhost/signup.php](http://localhost/signup.php)
+* 마이페이지: [http://localhost/signup.php](http://localhost/myPage.php) (세션 관리로 인해 URL로 이동 불가)
 * 학생 메인: [http://localhost/enroll.php](http://localhost/enroll.php) (세션 관리로 인해 URL로 이동 불가)
 * 교수 페이지: [http://localhost/professor.php](http://localhost/professor.php) (세션 관리로 인해 URL로 이동 불가)
 * 관리자 페이지: [http://localhost/admin.php](http://localhost/admin.php) (세션 관리로 인해 URL로 이동 불가)
@@ -69,6 +73,7 @@
 
 * 로그인 기능: login.php 접속 후 `3.사용자 계정 정보`에 나온 계정으로 로그인
 * 회원가입 기능: signup.php 접속 후 회원가입 진행 → `3.사용자 계정 정보`에 관리자 아이디로 로그인 후 회원가입 승인/거절
+* 마이페이지 기능: 학생 페이지, 교수 페이지 접속 후 로그아웃 왼쪽 마이페이지 버튼 클릭 → myPage.php로 이동 → 새 비밀번호 변경 혹은 회원탈퇴
 * 장바구니 기능: `3.사용자 계정 정보`에 학생 아이디로 로그인 → `enroll.php`로 이동 → 좌측 메뉴의 예비수강신청 클릭 → 예비수강신청 진행
 * 수강 신청: `3.사용자 계정 정보`에 학생 아이디로 로그인 → `enroll.php`로 이동 → 수강신청 진행
 * 빌넣 기능: `MySQL Workbench` 접속 → 쿼리 실행
