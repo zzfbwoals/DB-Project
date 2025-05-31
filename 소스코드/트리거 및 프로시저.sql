@@ -255,7 +255,12 @@ CREATE PROCEDURE sp_cart_with_conflict_check(
 BEGIN
     DECLARE v_existsCourse INT DEFAULT 0;
     DECLARE v_alreadyEnrolled INT DEFAULT 0;
-    DECLARE v_alreadyInCart INT DEFAULT 0;
+	DECLARE v_alreadyInCart INT DEFAULT 0;
+    DECLARE v_lastSemCredits FLOAT DEFAULT 0;
+    DECLARE v_currentCredits FLOAT DEFAULT 0;
+    DECLARE v_newCourseCredits INT DEFAULT 0;
+    DECLARE v_totalAfterCart FLOAT DEFAULT 0;
+    DECLARE v_maxCreditsAllowed INT DEFAULT 18;
     DECLARE v_conflictCount INT DEFAULT 0;
 
     -- 과목코드 유효성 검사
@@ -288,6 +293,38 @@ BEGIN
     IF v_alreadyInCart > 0 THEN
         SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT = '이미 장바구니에 담긴 과목입니다.';
+    END IF;
+
+    -- 학점 초과 검사
+    SELECT IFNULL(lastSemesterCredits, 0)
+    INTO v_lastSemCredits
+    FROM User
+    WHERE userID = p_userID;
+
+    IF v_lastSemCredits >= 3.0 THEN
+        SET v_maxCreditsAllowed = 19;
+    END IF;
+
+    SELECT IFNULL(SUM(c.credits), 0)
+    INTO v_currentCredits
+    FROM Cart e
+    JOIN Course c ON e.courseID = c.courseID
+    WHERE e.userID = p_userID;
+
+    SELECT credits
+    INTO v_newCourseCredits
+    FROM Course
+    WHERE courseID = p_courseID;
+
+    SET v_totalAfterCart = v_currentCredits + v_newCourseCredits;
+    IF v_totalAfterCart > v_maxCreditsAllowed THEN
+        SET @error_msg = CONCAT(
+            '최대 신청 가능 학점 ', v_maxCreditsAllowed,
+            '을 초과했습니다. 현재: ', v_currentCredits,
+            ', 추가: ', v_newCourseCredits
+        );
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = @error_msg;
     END IF;
 
     -- 시간표 충돌 검사
