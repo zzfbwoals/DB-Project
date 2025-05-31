@@ -82,7 +82,7 @@ BEGIN
 
         IF currCount >= maxCap THEN
             SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = '정원이 초과되어 수강신청이 불가능합니다.';
+            SET MESSAGE_TEXT = '정원이 초과되어 수강신청이 불가능합니다. 빌넣요청을 이용해주세요.';
         END IF;
     END IF;
 END $$
@@ -128,7 +128,6 @@ BEGIN
     SET extraEnrollStatus = '승인'
     WHERE extraEnrollID = p_extraEnrollID;
 
-    COMMIT;
 END $$
 DELIMITER ;
 
@@ -151,17 +150,6 @@ BEGIN
     DECLARE v_totalAfterEnroll FLOAT DEFAULT 0;
     DECLARE v_maxCreditsAllowed INT DEFAULT 18;
     DECLARE v_conflictCount INT DEFAULT 0;
-
-    DECLARE EXIT HANDLER FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-        DROP TEMPORARY TABLE IF EXISTS tmp_new_times;
-        DROP TEMPORARY TABLE IF EXISTS tmp_existing_times;
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = '수강신청 처리 중 오류가 발생했습니다.';
-    END;
-
-    START TRANSACTION;
 
     -- 과목코드 유효성 검사
     SELECT COUNT(*)
@@ -251,7 +239,6 @@ BEGIN
     INSERT INTO Enroll(userID, courseID)
     VALUES (p_userID, p_courseID);
 
-    COMMIT;
 END $$
 DELIMITER ;
 
@@ -270,17 +257,6 @@ BEGIN
     DECLARE v_alreadyEnrolled INT DEFAULT 0;
     DECLARE v_alreadyInCart INT DEFAULT 0;
     DECLARE v_conflictCount INT DEFAULT 0;
-
-    DECLARE EXIT HANDLER FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-        DROP TEMPORARY TABLE IF EXISTS tmp_new_times;
-        DROP TEMPORARY TABLE IF EXISTS tmp_existing_times;
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = '장바구니 추가 중 오류가 발생했습니다.';
-    END;
-
-    START TRANSACTION;
 
     -- 과목코드 유효성 검사
     SELECT COUNT(*)
@@ -356,7 +332,6 @@ BEGIN
     INSERT INTO Cart(userID, courseID)
     VALUES (p_userID, p_courseID);
 
-    COMMIT;
 END $$
 DELIMITER ;
 
@@ -385,17 +360,6 @@ BEGIN
     DECLARE v_conflictCount INT DEFAULT 0;
     DECLARE v_alreadyEnrolled INT DEFAULT 0;
     DECLARE v_alreadyRequested INT DEFAULT 0;
-
-    DECLARE EXIT HANDLER FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-        DROP TEMPORARY TABLE IF EXISTS tmp_new_times;
-        DROP TEMPORARY TABLE IF EXISTS tmp_existing_times;
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = '빌넣 요청 처리 중 오류가 발생했습니다.';
-    END;
-
-    START TRANSACTION;
 
     -- 과목코드 유효성 및 정원 검사
     SELECT COUNT(*)
@@ -518,6 +482,5 @@ BEGIN
     INSERT INTO ExtraEnroll (userID, courseID, reason, extraEnrollStatus)
     VALUES (p_userID, p_courseID, p_reason, '대기');
 
-    COMMIT;
 END $$
 DELIMITER ;

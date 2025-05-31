@@ -16,7 +16,7 @@ GRANT SELECT ON dbproject.Department TO 'professor_user'@'localhost';           
 GRANT SELECT ON dbproject.User TO 'professor_user'@'localhost';                         -- 학생 정보 조회
 GRANT EXECUTE ON PROCEDURE dbproject.sp_approve_extra_enroll TO 'professor_user'@'localhost'; -- 빌넣 승인
 GRANT EXECUTE ON PROCEDURE dbproject.sp_enroll_with_conflict_check TO 'professor_user'@'localhost'; -- 수강신청 관리
-GRANT EXECUTE ON FUNCTION dbproject.period_to_numeric TO 'professor_user'@'localhost';   -- 시간표 충돌 검사용 함수
+GRANT EXECUTE ON FUNCTION dbproject.period_to_numeric TO 'professor_user'@'localhost';   -- 충돌 검사용 함수
 
 -- student_user: 본인 관련 데이터 조작 및 관련 프로시저 실행 권한
 GRANT SELECT, INSERT, DELETE ON dbproject.Enroll TO 'student_user'@'localhost';         -- 수강신청/취소
@@ -30,7 +30,7 @@ GRANT SELECT ON dbproject.College TO 'student_user'@'localhost';                
 GRANT EXECUTE ON PROCEDURE dbproject.sp_enroll_with_conflict_check TO 'student_user'@'localhost'; -- 수강신청
 GRANT EXECUTE ON PROCEDURE dbproject.sp_cart_with_conflict_check TO 'student_user'@'localhost'; -- 장바구니 추가
 GRANT EXECUTE ON PROCEDURE dbproject.sp_extra_enroll_with_conflict_check TO 'student_user'@'localhost'; -- 빌넣 요청
-GRANT EXECUTE ON FUNCTION dbproject.period_to_numeric TO 'student_user'@'localhost';     -- 시간표 충돌 검사용 함수
+GRANT EXECUTE ON FUNCTION dbproject.period_to_numeric TO 'student_user'@'localhost';     -- 충돌 검사용 함수
 
 -- auth_user: 로그인, 회원가입 관련 권한 부여
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbproject.User TO 'auth_user'@'localhost';      -- 로그인, 회원가입, 정보수정, 탈퇴
