@@ -283,6 +283,50 @@ $maxCredits = ($studentInfo['lastSemesterCredits'] >= 3.0) ? 19 : 18;
 // 장바구니 처리 로직
 // ---------------------------------------
 
+// 장바구니 추가 함수 - sp_cart_with_conflict_check 활용
+function addToCart($conn, $studentID, $courseID)
+{
+    // 디버깅 로그
+    error_log("addToCart called with studentID: $studentID, courseID: $courseID");
+
+    // 트랜잭션 시작
+    $conn->begin_transaction();
+    try
+    {
+        // sp_cart_with_conflict_check 호출
+        // - 과목 유효성, 수강/장바구니 중복, 시간표 충돌 검사
+        // - 모든 검사를 통과하면 Cart 테이블에 삽입
+        $cartQuery = "CALL sp_cart_with_conflict_check(?, ?)";
+        $stmt = $conn->prepare($cartQuery);
+        $stmt->bind_param("ss", $studentID, $courseID);
+        $cartSuccess = $stmt->execute();
+        if (!$cartSuccess)
+        {
+            throw new Exception("장바구니 추가 프로시저 실행 실패: " . $conn->error);
+        }
+        $stmt->close();
+
+        // 트랜잭션 커밋
+        $conn->commit();
+        error_log("Cart addition successful for courseID: $courseID, studentID: $studentID");
+        return true;
+    }
+    catch (Exception $e)
+    {
+        $conn->rollback();
+        $errorMsg = $e->getMessage();
+        error_log("Cart addition failed: $errorMsg");
+        // 사용자에게 오류 메시지 표시
+        return "" . htmlspecialchars($errorMsg);
+    }
+}
+
+// POST 요청 디버깅 로그
+if ($_SERVER['REQUEST_METHOD'] === 'POST')
+{
+    error_log("POST data: " . print_r($_POST, true));
+}
+
 // 장바구니에서 삭제 처리
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID']) && isset($_POST['action']) && $_POST['action'] === 'remove')
 {
@@ -303,60 +347,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['courseID']) && isset(
 
         // 트랜잭션 커밋
         $conn->commit();
-        header("Location: cart.php");
+        error_log("Cart removal successful for courseID: $deleteCourseID, studentID: $studentID");
+        // 캐싱 방지를 위해 타임스탬프 추가
+        echo "<script>alert('장바구니에서 삭제되었습니다.'); window.location.href='cart.php?" . time() . "';</script>";
         exit();
     }
     catch (Exception $e)
     {
         $conn->rollback();
-        echo "<script>alert('장바구니 삭제 중 오류가 발생했습니다: " . htmlspecialchars($e->getMessage()) . "'); window.location.href='cart.php';</script>";
+        error_log("Cart removal failed: " . $e->getMessage());
+        echo "<script>alert('장바구니 삭제 중 오류가 발생했습니다: " . htmlspecialchars($e->getMessage()) . "'); window.location.href='cart.php?" . time() . "';</script>";
         exit();
     }
 }
 
-// 과목코드로 장바구니 추가 처리
+// 과목코드로 장바구니 추가 처리 및 추가 버튼 처리
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quickCartCourseID']) && isset($_POST['action']) && ($_POST['action'] === 'quickCart' || $_POST['action'] === 'add'))
 {
     $quickCourseID = trim($_POST['quickCartCourseID']);
+    
+    $result = addToCart($conn, $studentID, $quickCourseID);
 
-    // 트랜잭션 시작 - 데이터 일관성 보장
-    $conn->begin_transaction();
-    try
+    // 사용자 피드백 및 캐싱 방지
+    if ($result === true)
     {
-        // 중복 확인
-        $checkQuery = "SELECT * FROM Cart WHERE userID = ? AND courseID = ?";
-        $stmt = $conn->prepare($checkQuery);
-        $stmt->bind_param("ss", $studentID, $quickCourseID);
-        $stmt->execute();
-        $checkResult = $stmt->get_result();
-        if ($checkResult->num_rows > 0)
-        {
-            $conn->rollback();
-            echo "<script>alert('이미 장바구니에 추가된 과목입니다.'); window.location.href='cart.php';</script>";
-            exit();
-        }
-        $stmt->close();
-
-        // 장바구니 추가
-        $insertQuery = "INSERT INTO Cart (userID, courseID) VALUES (?, ?)";
-        $stmt = $conn->prepare($insertQuery);
-        $stmt->bind_param("ss", $studentID, $quickCourseID);
-        $success = $stmt->execute();
-        if (!$success)
-        {
-            throw new Exception("장바구니 추가 실패: " . $conn->error);
-        }
-        $stmt->close();
-
-        // 트랜잭션 커밋
-        $conn->commit();
-        echo "<script>alert('장바구니에 추가되었습니다.'); window.location.href='cart.php';</script>";
+        echo "<script>alert('장바구니에 추가되었습니다.'); window.location.href='cart.php?" . time() . "';</script>";
         exit();
     }
-    catch (Exception $e)
+    else
     {
-        $conn->rollback();
-        echo "<script>alert('장바구니 추가 중 오류가 발생했습니다: " . htmlspecialchars($e->getMessage()) . "'); window.location.href='cart.php';</script>";
+        echo "<script>alert('" . htmlspecialchars($result) . "'); window.location.href='cart.php?" . time() . "';</script>";
         exit();
     }
 }
@@ -544,13 +564,19 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1')
             border-bottom: 1px solid #eee;
         }
 
+        .header-buttons
+        {
+            display: flex;
+            gap: 10px;
+        }
+
         .studentInfo
         {
             font-size: 14px;
             color: #666;
         }
 
-        .logoutButton
+        .logoutButton, .mypageButton
         {
             padding: 8px 15px;
             background-color: #f2f2f2;
@@ -560,7 +586,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1')
             font-size: 14px;
         }
 
-        .logoutButton:hover
+        .logoutButton:hover, .mypageButton:hover
         {
             background-color: #e0e0e0;
         }
@@ -894,7 +920,10 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1')
                     <strong><?= htmlspecialchars($studentInfo['userName']) ?></strong> 님 환영합니다
                     <span>(학과: <?= htmlspecialchars($studentInfo['departmentName']) ?>, 학번: <?= htmlspecialchars($studentID) ?>)</span>
                 </div>
-                <a href="login.php" class="logoutButton">로그아웃</a>
+                <div class="header-buttons">
+                    <a href="myPage.php" class="mypageButton">마이페이지</a>
+                    <a href="login.php" class="logoutButton">로그아웃</a>
+                </div>
             </div>
 
             <div class="creditInfo">
@@ -1341,32 +1370,39 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1')
         window.location.href = window.location.pathname;
     }
 
+    // 과목코드로 바로 추가 및 추가 버튼 공통 함수
     function submitAdd(courseID, actionType)
     {
+        console.log(`submitAdd called with courseID: ${courseID}, actionType: ${actionType}`);
+        if (!courseID || courseID.trim() === '')
+        {
+            alert('유효하지 않은 과목코드입니다.');
+            return false;
+        }
+
         const quickCartForm = document.getElementById('quickCartForm');
         const courseIDInput = document.getElementById('quickCartCourseID');
         const actionInput = quickCartForm.querySelector('input[name="action"]');
 
-        if (!courseID)
-        {
-            alert('과목코드를 입력해주세요.');
-            return false;
-        }
-
-        courseIDInput.value = courseID;
+        courseIDInput.value = courseID.trim();
         actionInput.value = actionType;
+        console.log(`Submitting form with courseID: ${courseIDInput.value}, action: ${actionInput.value}`);
         quickCartForm.submit();
         return true;
     }
 
+    // 과목코드 입력으로 장바구니 추가
     function quickCartSubmit()
     {
         const courseIDInput = document.getElementById('quickCartCourseID').value.trim();
+        console.log(`quickCartSubmit called with courseID: ${courseIDInput}`);
         return submitAdd(courseIDInput, 'quickCart');
     }
 
+    // 추가 버튼으로 장바구니 추가
     function addToCart(courseID)
     {
+        console.log(`addToCart called with courseID: ${courseID}`);
         submitAdd(courseID, 'add');
     }
 </script>

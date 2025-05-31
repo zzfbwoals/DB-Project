@@ -144,149 +144,77 @@ $stmt->close();
 // 빌넣요청 처리 로직
 // ---------------------------------------
 
+// 빌넣요청 함수 - sp_extra_enroll_with_conflict_check 활용
+function requestExtraEnroll($conn, $studentID, $courseID, $reason)
+{
+    // 디버깅 로그: 요청 정보 기록
+    error_log("requestExtraEnroll called with studentID: $studentID, courseID: $courseID, reason: $reason");
+    
+    // 입력값 기본 검증: 빈 값 체크
+    if (empty($courseID) || empty($reason)) {
+        error_log("Validation failed: Empty courseID or reason");
+        return "과목코드 또는 요청 사유가 비어 있습니다.";
+    }
+    
+    // 요청 사유 길이 검증 (저장 프로시저와 일치: 100자 제한)
+    if (strlen($reason) > 100) {
+        error_log("Validation failed: Reason exceeds 100 characters");
+        return "요청 사유는 100자를 초과할 수 없습니다.";
+    }
+    
+    // 트랜잭션 시작 - 데이터 일관성 보장
+    $conn->begin_transaction();
+    try
+    {
+        // sp_extra_enroll_with_conflict_check 호출
+        // - 과목 유효성, 정원, 학점 초과, 시간표 충돌, 중복 요청 검사
+        $enrollQuery = "CALL sp_extra_enroll_with_conflict_check(?, ?, ?)";
+        $stmt = $conn->prepare($enrollQuery);
+        $stmt->bind_param("sss", $studentID, $courseID, $reason);
+        $enrollSuccess = $stmt->execute();
+        if (!$enrollSuccess)
+        {
+            throw new Exception("빌넣요청 프로시저 실행 실패: " . $conn->error);
+        }
+        $stmt->close();
+        
+        // 트랜잭션 커밋
+        $conn->commit();
+        error_log("Extra enroll request successful for courseID: $courseID, studentID: $studentID");
+        return true;
+    }
+    catch (Exception $e)
+    {
+        $conn->rollback();
+        $errorMsg = $e->getMessage();
+        error_log("Extra enroll request failed: $errorMsg");
+        // 사용자에게 오류 메시지 표시
+        return "" . htmlspecialchars($errorMsg);
+    }
+}
+
+// POST 요청 디버깅 로그
+if ($_SERVER['REQUEST_METHOD'] === 'POST')
+{
+    error_log("POST data: " . print_r($_POST, true));
+}
+
 // 빌넣요청 처리
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'extraEnroll')
 {
     $courseID = trim($_POST['courseID']);
     $reason = trim($_POST['reason']);
-
-    // 트랜잭션 시작 - 데이터 일관성 보장
-    $conn->begin_transaction();
-    try
+    
+    $result = requestExtraEnroll($conn, $studentID, $courseID, $reason);
+    
+    // 사용자 피드백 및 캐싱 방지
+    if ($result === true)
     {
-        // 1. 과목코드 유효성 확인 및 정원 확인
-        $courseCheckQuery = "SELECT courseID, capacity, currentEnrollment, credits, courseName FROM Course WHERE courseID = ?";
-        $stmt = $conn->prepare($courseCheckQuery);
-        $stmt->bind_param("s", $courseID);
-        $stmt->execute();
-        $courseResult = $stmt->get_result();
-
-        if ($courseResult->num_rows === 0)
-        {
-            $conn->rollback();
-            echo json_encode(['success' => false, 'message' => '존재하지 않는 과목코드입니다.']);
-            exit();
-        }
-
-        $course = $courseResult->fetch_assoc();
-        $stmt->close();
-
-        if ($course['currentEnrollment'] < $course['capacity'])
-        {
-            $conn->rollback();
-            echo json_encode(['success' => false, 'message' => '정원이 다 차지 않았습니다. 수강신청 페이지에서 신청해주세요.']);
-            exit();
-        }
-
-        // 2. 학점 초과 확인
-        $totalCredits = $currentCredits + $extraCredits + $course['credits'];
-        if ($totalCredits > $maxCredits)
-        {
-            $conn->rollback();
-            echo json_encode(['success' => false, 'message' => "신청 가능 학점($maxCredits)을 초과합니다. 현재 학점: $currentCredits, 대기 학점: $extraCredits, 요청 학점: {$course['credits']}"]);
-            exit();
-        }
-
-        // 3. 시간표 충돌 확인
-        // 요청 과목의 시간표 조회
-        $courseTimeQuery = "SELECT dayOfWeek, startPeriod, endPeriod FROM CourseTime WHERE courseID = ?";
-        $stmt = $conn->prepare($courseTimeQuery);
-        $stmt->bind_param("s", $courseID);
-        $stmt->execute();
-        $courseTimes = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-        $stmt->close();
-
-        // 기존 수강신청 및 빌넣요청 대기 과목의 시간표 조회
-        $existingTimesQuery = "SELECT ct.dayOfWeek, ct.startPeriod, ct.endPeriod, c.courseName
-                              FROM CourseTime ct
-                              JOIN (
-                                  SELECT courseID FROM Enroll WHERE userID = ?
-                                  UNION
-                                  SELECT courseID FROM ExtraEnroll WHERE userID = ? AND extraEnrollStatus = '대기'
-                              ) e ON ct.courseID = e.courseID
-                              JOIN Course c ON ct.courseID = c.courseID";
-        $stmt = $conn->prepare($existingTimesQuery);
-        $stmt->bind_param("ss", $studentID, $studentID);
-        $stmt->execute();
-        $existingTimes = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-        $stmt->close();
-
-        // 충돌 여부 확인
-        foreach ($courseTimes as $newTime)
-        {
-            foreach ($existingTimes as $existingTime)
-            {
-                if ($newTime['dayOfWeek'] === $existingTime['dayOfWeek'])
-                {
-                    // 시간대 겹침 확인: 새 과목의 시작 시간이 기존 과목의 종료 시간 전이고, 새 과목의 종료 시간이 기존 과목의 시작 시간 후인 경우
-                    if ($newTime['startPeriod'] <= $existingTime['endPeriod'] && $newTime['endPeriod'] >= $existingTime['startPeriod'])
-                    {
-                        $conn->rollback();
-                        $message = sprintf(
-                            "시간표가 충돌합니다: '%s' (%s %d-%d)와 '%s' (%s %d-%d)",
-                            htmlspecialchars($course['courseName']),
-                            htmlspecialchars($newTime['dayOfWeek']),
-                            $newTime['startPeriod'],
-                            $newTime['endPeriod'],
-                            htmlspecialchars($existingTime['courseName']),
-                            htmlspecialchars($existingTime['dayOfWeek']),
-                            $existingTime['startPeriod'],
-                            $existingTime['endPeriod']
-                        );
-                        echo json_encode(['success' => false, 'message' => $message]);
-                        exit();
-                    }
-                }
-            }
-        }
-
-        // 4. 이미 수강신청했는지 확인 (Enroll 테이블)
-        $alreadyEnrolledQuery = "SELECT * FROM Enroll WHERE userID = ? AND courseID = ?";
-        $stmt = $conn->prepare($alreadyEnrolledQuery);
-        $stmt->bind_param("ss", $studentID, $courseID);
-        $stmt->execute();
-        $alreadyEnrolledResult = $stmt->get_result();
-        if ($alreadyEnrolledResult->num_rows > 0)
-        {
-            $conn->rollback();
-            echo json_encode(['success' => false, 'message' => '이미 수강신청한 과목입니다.']);
-            exit();
-        }
-        $stmt->close();
-
-        // 5. 이미 빌넣요청했는지 확인 (ExtraEnroll 테이블)
-        $alreadyRequestedQuery = "SELECT * FROM ExtraEnroll WHERE userID = ? AND courseID = ? AND extraEnrollStatus = '대기'";
-        $stmt = $conn->prepare($alreadyRequestedQuery);
-        $stmt->bind_param("ss", $studentID, $courseID);
-        $stmt->execute();
-        $alreadyRequestedResult = $stmt->get_result();
-        if ($alreadyRequestedResult->num_rows > 0)
-        {
-            $conn->rollback();
-            echo json_encode(['success' => false, 'message' => '이미 빌넣요청한 과목입니다.']);
-            exit();
-        }
-        $stmt->close();
-
-        // 6. 빌넣요청 등록
-        $insertQuery = "INSERT INTO ExtraEnroll (userID, courseID, reason, extraEnrollStatus) VALUES (?, ?, ?, '대기')";
-        $stmt = $conn->prepare($insertQuery);
-        $stmt->bind_param("sss", $studentID, $courseID, $reason);
-        $success = $stmt->execute();
-        if (!$success)
-        {
-            throw new Exception("빌넣요청 삽입 실패: " . $conn->error);
-        }
-        $stmt->close();
-
-        // 트랜잭션 커밋
-        $conn->commit();
         echo json_encode(['success' => true, 'message' => '빌넣요청이 성공적으로 제출되었습니다.']);
     }
-    catch (Exception $e)
+    else
     {
-        $conn->rollback();
-        echo json_encode(['success' => false, 'message' => '빌넣요청 중 오류가 발생했습니다: ' . htmlspecialchars($e->getMessage())]);
+        echo json_encode(['success' => false, 'message' => htmlspecialchars($result)]);
     }
     exit();
 }
@@ -295,7 +223,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'cancelExtraEnroll')
 {
     $courseID = trim($_POST['courseID']);
-
+    
     // 트랜잭션 시작 - 데이터 일관성 보장
     $conn->begin_transaction();
     try
@@ -313,7 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             exit();
         }
         $stmt->close();
-
+        
         // 요청 삭제
         $deleteQuery = "DELETE FROM ExtraEnroll WHERE userID = ? AND courseID = ?";
         $stmt = $conn->prepare($deleteQuery);
@@ -324,14 +252,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             throw new Exception("빌넣요청 삭제 실패: " . $conn->error);
         }
         $stmt->close();
-
+        
         // 트랜잭션 커밋
         $conn->commit();
+        error_log("Extra enroll cancellation successful for courseID: $courseID, studentID: $studentID");
         echo json_encode(['success' => true, 'message' => '빌넣요청이 취소되었습니다.']);
     }
     catch (Exception $e)
     {
         $conn->rollback();
+        error_log("Extra enroll cancellation failed: " . $e->getMessage());
         echo json_encode(['success' => false, 'message' => '빌넣요청 취소 중 오류가 발생했습니다: ' . htmlspecialchars($e->getMessage())]);
     }
     exit();
@@ -519,13 +449,19 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1')
             border-bottom: 1px solid #eee;
         }
 
-        .studentInfo
+        .header-buttons
+        {
+            display: flex;
+            gap: 10px;
+        }
+
+        .studentInfo 
         {
             font-size: 14px;
             color: #666;
         }
 
-        .logoutButton
+        .logoutButton, .mypageButton
         {
             padding: 8px 15px;
             background-color: #f2f2f2;
@@ -535,7 +471,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1')
             font-size: 14px;
         }
 
-        .logoutButton:hover
+        .logoutButton:hover, .mypageButton:hover
         {
             background-color: #e0e0e0;
         }
@@ -819,7 +755,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1')
                 <h3>빌넣요청</h3>
                 <form id="extraEnrollForm">
                     <label for="extraEnrollReason">요청 사유</label>
-                    <textarea id="extraEnrollReason" name="reason" placeholder="빌넣요청 사유를 입력하세요 (최대 100자)" maxlength="100" required></textarea>
+                    <textarea id="extraEnrollReason" name="reason" placeholder="빌넣요청 사유를 입력하세요 (최대 255자)" maxlength="255" required></textarea>
                     <div class="buttonRow">
                         <button type="button" class="button closeButton" onclick="closeModal()">취소</button>
                         <button type="submit" class="button submitButton">제출</button>
@@ -837,7 +773,10 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1')
                     <strong><?= htmlspecialchars($studentInfo['userName']) ?></strong> 님 환영합니다
                     <span>(학과: <?= htmlspecialchars($studentInfo['departmentName']) ?>, 학번: <?= htmlspecialchars($studentID) ?>)</span>
                 </div>
-                <a href="login.php" class="logoutButton">로그아웃</a>
+                <div class="header-buttons">
+                    <a href="myPage.php" class="mypageButton">마이페이지</a>
+                    <a href="login.php" class="logoutButton">로그아웃</a>
+                </div>
             </div>
 
             <!-- 수강신청 검색 -->
@@ -1169,7 +1108,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1')
             alert(data.message);
             if (data.success)
             {
-                window.location.reload(); // 성공 시 페이지 새로고침
+                window.location.href = 'extraEnroll.php?' + new Date().getTime(); // 캐싱 방지 리로드
             }
             closeModal();
         })
@@ -1203,7 +1142,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1')
             alert(data.message);
             if (data.success)
             {
-                window.location.reload();
+                window.location.href = 'extraEnroll.php?' + new Date().getTime(); // 캐싱 방지 리로드
             }
         })
         .catch(error =>
