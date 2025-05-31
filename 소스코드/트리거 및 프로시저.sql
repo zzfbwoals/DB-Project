@@ -1,9 +1,39 @@
 USE dbproject;
 
 -- ===============================================
--- 1) 수강신청 삽입 트리거
---    Enroll 삽입 시 Course.currentEnrollment을 +1 해 주는 트리거
+-- Helper Function: period_to_numeric
+-- VARCHAR(5) 형식의 period를 소수로 변환
+-- 예: '1' → 1.0, '1A' → 1.0, '1B' → 1.5, '2' → 2.0
 -- ===============================================
+DROP FUNCTION IF EXISTS period_to_numeric;
+DELIMITER $$
+CREATE FUNCTION period_to_numeric(p_period VARCHAR(5))
+RETURNS FLOAT DETERMINISTIC
+BEGIN
+    DECLARE base_num INT;
+    DECLARE suffix CHAR(1);
+    DECLARE numeric_value FLOAT;
+
+    -- 숫자 부분 추출
+    SET base_num = CAST(REGEXP_REPLACE(p_period, '[A-B]', '') AS UNSIGNED);
+    -- 접미사(A/B) 추출
+    SET suffix = IF(p_period REGEXP '[A-B]', RIGHT(p_period, 1), '');
+
+    -- 접미사에 따라 소수 변환
+    IF suffix = 'B' THEN
+        SET numeric_value = base_num + 0.5;
+    ELSE
+        SET numeric_value = base_num + 0.0;
+    END IF;
+
+    RETURN numeric_value;
+END $$
+DELIMITER ;
+
+-- ===============================================
+-- Trigger 1: Enroll 삽입 후 Course.currentEnrollment 증가
+-- ===============================================
+DROP TRIGGER IF EXISTS trg_after_insert_enroll;
 DELIMITER $$
 CREATE TRIGGER trg_after_insert_enroll
 AFTER INSERT ON Enroll
@@ -15,11 +45,10 @@ BEGIN
 END $$
 DELIMITER ;
 
-
 -- ===============================================
--- 2) 수강신청 삭제 트리거
---    Enroll 삭제 시 Course.currentEnrollment을 -1 해 주는 트리거
+-- Trigger 2: Enroll 삭제 후 Course.currentEnrollment 감소
 -- ===============================================
+DROP TRIGGER IF EXISTS trg_after_delete_enroll;
 DELIMITER $$
 CREATE TRIGGER trg_after_delete_enroll
 AFTER DELETE ON Enroll
@@ -31,116 +60,464 @@ BEGIN
 END $$
 DELIMITER ;
 
-
 -- ===============================================
--- 3) 정원 초과 방지를 위한 트리거
---    Enroll 삽입 전 currentEnrollment >= capacity 면 에러 발생
---    세션 변수 @IGNORE_CAPACITY_CHECK = 1 이면 검사 건너뛰기
+-- Trigger 3: Enroll 삽입 전 정원 초과 검사
+-- @IGNORE_CAPACITY_CHECK = 1 시 검사 우회 (빌넣 승인용)
 -- ===============================================
+DROP TRIGGER IF EXISTS trg_before_insert_enroll_capacity;
 DELIMITER $$
 CREATE TRIGGER trg_before_insert_enroll_capacity
 BEFORE INSERT ON Enroll
 FOR EACH ROW
 BEGIN
-	DECLARE maxCap INT;
-	DECLARE currCount INT;
-        
+    DECLARE maxCap INT;
+    DECLARE currCount INT;
+
     IF @IGNORE_CAPACITY_CHECK IS NULL OR @IGNORE_CAPACITY_CHECK = 0 THEN
         SELECT capacity, currentEnrollment
-          INTO maxCap, currCount
-          FROM Course
-         WHERE courseID = NEW.courseID
-         FOR UPDATE;  -- 동시성 락
+        INTO maxCap, currCount
+        FROM Course
+        WHERE courseID = NEW.courseID
+        FOR UPDATE;
 
         IF currCount >= maxCap THEN
             SIGNAL SQLSTATE '45000'
-                SET MESSAGE_TEXT = '정원이 초과되어 수강신청이 불가능합니다.';
+            SET MESSAGE_TEXT = '정원이 초과되어 수강신청이 불가능합니다.';
         END IF;
     END IF;
-    -- @IGNORE_CAPACITY_CHECK = 1 이면 capacity 체크 없이 그냥 INSERT 허용: 빌넣 요청 승인 시 사용
 END $$
 DELIMITER ;
 
-
 -- ===============================================
--- 4) 빌넣 요청 승인 프로시저
---    ExtraEnroll 승인 시 Enroll에 삽입하고 상태 업데이트
---    (이때 트리거의 정원 검사만 우회하기 위해 세션 변수 사용)
+-- Procedure 1: 빌넣 요청 승인
+-- ExtraEnroll 승인 시 Enroll 삽입 및 상태 업데이트
 -- ===============================================
+DROP PROCEDURE IF EXISTS sp_approve_extra_enroll;
 DELIMITER $$
 CREATE PROCEDURE sp_approve_extra_enroll(
     IN p_extraEnrollID INT
 )
 BEGIN
-    DECLARE v_userID  VARCHAR(20);
+    DECLARE v_userID VARCHAR(20);
     DECLARE v_courseID VARCHAR(5);
 
-    -- 1) ExtraEnroll 정보 조회 (락 걸기)
-    SELECT userID, courseID
-      INTO v_userID, v_courseID
-      FROM ExtraEnroll
-     WHERE extraEnrollID = p_extraEnrollID
-       FOR UPDATE;
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '빌넣 요청 승인 중 오류가 발생했습니다.';
+    END;
 
-    -- 2) 정원 검사 우회: @IGNORE_CAPACITY_CHECK를 1로 세팅
+    START TRANSACTION;
+
+    -- ExtraEnroll 정보 조회
+    SELECT userID, courseID
+    INTO v_userID, v_courseID
+    FROM ExtraEnroll
+    WHERE extraEnrollID = p_extraEnrollID
+    FOR UPDATE;
+
+    -- 정원 검사 우회
     SET @IGNORE_CAPACITY_CHECK = 1;
     INSERT INTO Enroll(userID, courseID)
-    VALUES(v_userID, v_courseID);
-    -- 다시 원상태로 돌려놓기
+    VALUES (v_userID, v_courseID);
     SET @IGNORE_CAPACITY_CHECK = 0;
 
-    -- 3) ExtraEnroll 상태를 '승인'으로 변경
+    -- ExtraEnroll 상태 업데이트
     UPDATE ExtraEnroll
-       SET extraEnrollStatus = '승인'
-     WHERE extraEnrollID = p_extraEnrollID;
+    SET extraEnrollStatus = '승인'
+    WHERE extraEnrollID = p_extraEnrollID;
+
+    COMMIT;
 END $$
 DELIMITER ;
 
-
 -- ===============================================
--- 5) 수강신청 충돌 검사 + 삽입 프로시저
---    시간표 충돌이 없을 경우에만 Enroll에 삽입
+-- Procedure 2: 수강신청 종합 검사 및 삽입
+-- 검사: 과목 유효성, 중복 수강, 학점 초과, 시간표 충돌
 -- ===============================================
+DROP PROCEDURE IF EXISTS sp_enroll_with_conflict_check;
 DELIMITER $$
 CREATE PROCEDURE sp_enroll_with_conflict_check(
     IN p_userID VARCHAR(20),
     IN p_courseID VARCHAR(5)
 )
 BEGIN
+    DECLARE v_existsCourse INT DEFAULT 0;
+    DECLARE v_alreadyEnrolled INT DEFAULT 0;
+    DECLARE v_lastSemCredits FLOAT DEFAULT 0;
+    DECLARE v_currentCredits FLOAT DEFAULT 0;
+    DECLARE v_newCourseCredits INT DEFAULT 0;
+    DECLARE v_totalAfterEnroll FLOAT DEFAULT 0;
+    DECLARE v_maxCreditsAllowed INT DEFAULT 18;
     DECLARE v_conflictCount INT DEFAULT 0;
 
-    -- (1) 신규 강의 시간 정보 임시 테이블에 저장
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        DROP TEMPORARY TABLE IF EXISTS tmp_new_times;
+        DROP TEMPORARY TABLE IF EXISTS tmp_existing_times;
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '수강신청 처리 중 오류가 발생했습니다.';
+    END;
+
+    START TRANSACTION;
+
+    -- 과목코드 유효성 검사
+    SELECT COUNT(*)
+    INTO v_existsCourse
+    FROM Course
+    WHERE courseID = p_courseID;
+    IF v_existsCourse = 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '존재하지 않는 과목코드입니다.';
+    END IF;
+
+    -- 중복 수강신청 검사
+    SELECT COUNT(*)
+    INTO v_alreadyEnrolled
+    FROM Enroll
+    WHERE userID = p_userID
+    AND courseID = p_courseID;
+    IF v_alreadyEnrolled > 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '이미 해당 과목을 수강신청하셨습니다.';
+    END IF;
+
+    -- 학점 초과 검사
+    SELECT IFNULL(lastSemesterCredits, 0)
+    INTO v_lastSemCredits
+    FROM User
+    WHERE userID = p_userID;
+
+    IF v_lastSemCredits >= 3.0 THEN
+        SET v_maxCreditsAllowed = 19;
+    END IF;
+
+    SELECT IFNULL(SUM(c.credits), 0)
+    INTO v_currentCredits
+    FROM Enroll e
+    JOIN Course c ON e.courseID = c.courseID
+    WHERE e.userID = p_userID;
+
+    SELECT credits
+    INTO v_newCourseCredits
+    FROM Course
+    WHERE courseID = p_courseID;
+
+    SET v_totalAfterEnroll = v_currentCredits + v_newCourseCredits;
+    IF v_totalAfterEnroll > v_maxCreditsAllowed THEN
+        SET @error_msg = CONCAT(
+            '최대 신청 가능 학점 ', v_maxCreditsAllowed,
+            '을 초과했습니다. 현재: ', v_currentCredits,
+            ', 추가: ', v_newCourseCredits
+        );
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = @error_msg;
+    END IF;
+
+    -- 시간표 충돌 검사
     CREATE TEMPORARY TABLE tmp_new_times AS
-    SELECT dayOfWeek, startPeriod, endPeriod
-      FROM CourseTime
-     WHERE courseID = p_courseID;
+    SELECT dayOfWeek, startPeriod, endPeriod,
+           period_to_numeric(startPeriod) AS startNum,
+           period_to_numeric(endPeriod) AS endNum
+    FROM CourseTime
+    WHERE courseID = p_courseID;
 
-    -- (2) 이미 신청된 강의들의 시간 정보 임시 테이블에 저장
     CREATE TEMPORARY TABLE tmp_existing_times AS
-    SELECT ct.dayOfWeek, ct.startPeriod, ct.endPeriod
-      FROM Enroll e
-      JOIN CourseTime ct ON e.courseID = ct.courseID
-     WHERE e.userID = p_userID;
+    SELECT ct.dayOfWeek, ct.startPeriod, ct.endPeriod,
+           period_to_numeric(ct.startPeriod) AS startNum,
+           period_to_numeric(ct.endPeriod) AS endNum
+    FROM Enroll e
+    JOIN CourseTime ct ON e.courseID = ct.courseID
+    WHERE e.userID = p_userID;
 
-    -- (3) 충돌 검사: 동일 요일에 시간 겹치는 경우 개수 확인
-    SELECT COUNT(*) INTO v_conflictCount
-      FROM tmp_new_times n
-      JOIN tmp_existing_times e
-        ON n.dayOfWeek = e.dayOfWeek
-       AND NOT (n.endPeriod <= e.startPeriod 
-             OR n.startPeriod >= e.endPeriod);
+    SELECT COUNT(*)
+    INTO v_conflictCount
+    FROM tmp_new_times n
+    JOIN tmp_existing_times e
+    ON n.dayOfWeek = e.dayOfWeek
+    AND NOT (n.endNum <= e.startNum OR n.startNum >= e.endNum);
+
+    DROP TEMPORARY TABLE tmp_new_times;
+    DROP TEMPORARY TABLE tmp_existing_times;
 
     IF v_conflictCount > 0 THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = '시간표 충돌로 인해 수강신청이 불가능합니다.';
+        SET MESSAGE_TEXT = '시간표 충돌로 인해 수강신청이 불가능합니다.';
     END IF;
 
-    -- (4) 충돌 없으면 Enroll 삽입 (트리거로 currentEnrollment 관리됨)
+    -- Enroll 삽입
     INSERT INTO Enroll(userID, courseID)
-    VALUES(p_userID, p_courseID);
+    VALUES (p_userID, p_courseID);
 
-    -- (5) 임시 테이블 정리
-    DROP TEMPORARY TABLE IF EXISTS tmp_new_times;
-    DROP TEMPORARY TABLE IF EXISTS tmp_existing_times;
+    COMMIT;
+END $$
+DELIMITER ;
+
+-- ===============================================
+-- Procedure 3: 장바구니 추가 종합 검사 및 삽입
+-- 검사: 과목 유효성, 수강/장바구니 중복, 시간표 충돌
+-- ===============================================
+DROP PROCEDURE IF EXISTS sp_cart_with_conflict_check;
+DELIMITER $$
+CREATE PROCEDURE sp_cart_with_conflict_check(
+    IN p_userID VARCHAR(20),
+    IN p_courseID VARCHAR(5)
+)
+BEGIN
+    DECLARE v_existsCourse INT DEFAULT 0;
+    DECLARE v_alreadyEnrolled INT DEFAULT 0;
+    DECLARE v_alreadyInCart INT DEFAULT 0;
+    DECLARE v_conflictCount INT DEFAULT 0;
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        DROP TEMPORARY TABLE IF EXISTS tmp_new_times;
+        DROP TEMPORARY TABLE IF EXISTS tmp_existing_times;
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '장바구니 추가 중 오류가 발생했습니다.';
+    END;
+
+    START TRANSACTION;
+
+    -- 과목코드 유효성 검사
+    SELECT COUNT(*)
+    INTO v_existsCourse
+    FROM Course
+    WHERE courseID = p_courseID;
+    IF v_existsCourse = 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '존재하지 않는 과목코드입니다.';
+    END IF;
+
+    -- 수강신청 중복 검사
+    SELECT COUNT(*)
+    INTO v_alreadyEnrolled
+    FROM Enroll
+    WHERE userID = p_userID
+    AND courseID = p_courseID;
+    IF v_alreadyEnrolled > 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '이미 수강신청한 과목입니다.';
+    END IF;
+
+    -- 장바구니 중복 검사
+    SELECT COUNT(*)
+    INTO v_alreadyInCart
+    FROM Cart
+    WHERE userID = p_userID
+    AND courseID = p_courseID;
+    IF v_alreadyInCart > 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '이미 장바구니에 담긴 과목입니다.';
+    END IF;
+
+    -- 시간표 충돌 검사
+    CREATE TEMPORARY TABLE tmp_new_times AS
+    SELECT dayOfWeek, startPeriod, endPeriod,
+           period_to_numeric(startPeriod) AS startNum,
+           period_to_numeric(endPeriod) AS endNum
+    FROM CourseTime
+    WHERE courseID = p_courseID;
+
+    CREATE TEMPORARY TABLE tmp_existing_times AS
+    SELECT ct.dayOfWeek, ct.startPeriod, ct.endPeriod,
+           period_to_numeric(ct.startPeriod) AS startNum,
+           period_to_numeric(ct.endPeriod) AS endNum
+    FROM Enroll e
+    JOIN CourseTime ct ON e.courseID = ct.courseID
+    WHERE e.userID = p_userID
+    UNION ALL
+    SELECT ct2.dayOfWeek, ct2.startPeriod, ct2.endPeriod,
+           period_to_numeric(ct2.startPeriod) AS startNum,
+           period_to_numeric(ct2.endPeriod) AS endNum
+    FROM Cart c
+    JOIN CourseTime ct2 ON c.courseID = ct2.courseID
+    WHERE c.userID = p_userID;
+
+    SELECT COUNT(*)
+    INTO v_conflictCount
+    FROM tmp_new_times n
+    JOIN tmp_existing_times e
+    ON n.dayOfWeek = e.dayOfWeek
+    AND NOT (n.endNum <= e.startNum OR n.startNum >= e.endNum);
+
+    DROP TEMPORARY TABLE tmp_new_times;
+    DROP TEMPORARY TABLE tmp_existing_times;
+
+    IF v_conflictCount > 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '시간표 충돌로 인해 예비 수강신청이 불가능합니다.';
+    END IF;
+
+    -- Cart 삽입
+    INSERT INTO Cart(userID, courseID)
+    VALUES (p_userID, p_courseID);
+
+    COMMIT;
+END $$
+DELIMITER ;
+
+-- ===============================================
+-- Procedure 4: 빌넣 요청 종합 검사 및 삽입
+-- 검사: 과목 유효성, 정원, 학점 초과, 시간표 충돌, 중복
+-- ===============================================
+DROP PROCEDURE IF EXISTS sp_extra_enroll_with_conflict_check;
+DELIMITER $$
+CREATE PROCEDURE sp_extra_enroll_with_conflict_check(
+    IN p_userID VARCHAR(20),
+    IN p_courseID VARCHAR(5),
+    IN p_reason VARCHAR(255)
+)
+BEGIN
+    DECLARE v_existsCourse INT DEFAULT 0;
+    DECLARE v_capacity INT DEFAULT 0;
+    DECLARE v_currentEnroll INT DEFAULT 0;
+    DECLARE v_credits INT DEFAULT 0;
+    DECLARE v_courseName VARCHAR(100);
+    DECLARE v_lastSemCredits FLOAT DEFAULT 0;
+    DECLARE v_maxCreditsAllowed INT DEFAULT 18;
+    DECLARE v_currentCredits FLOAT DEFAULT 0;
+    DECLARE v_extraCredits FLOAT DEFAULT 0;
+    DECLARE v_totalCredits FLOAT DEFAULT 0;
+    DECLARE v_conflictCount INT DEFAULT 0;
+    DECLARE v_alreadyEnrolled INT DEFAULT 0;
+    DECLARE v_alreadyRequested INT DEFAULT 0;
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        DROP TEMPORARY TABLE IF EXISTS tmp_new_times;
+        DROP TEMPORARY TABLE IF EXISTS tmp_existing_times;
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '빌넣 요청 처리 중 오류가 발생했습니다.';
+    END;
+
+    START TRANSACTION;
+
+    -- 과목코드 유효성 및 정원 검사
+    SELECT COUNT(*)
+    INTO v_existsCourse
+    FROM Course
+    WHERE courseID = p_courseID;
+    IF v_existsCourse = 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '존재하지 않는 과목코드입니다.';
+    END IF;
+
+    SELECT capacity, currentEnrollment, credits, courseName
+    INTO v_capacity, v_currentEnroll, v_credits, v_courseName
+    FROM Course
+    WHERE courseID = p_courseID
+    FOR UPDATE;
+    IF v_currentEnroll < v_capacity THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '정원이 아직 남아 있습니다. 수강신청 페이지에서 신청해주세요.';
+    END IF;
+
+    -- 학점 초과 검사
+    SELECT IFNULL(lastSemesterCredits, 0)
+    INTO v_lastSemCredits
+    FROM User
+    WHERE userID = p_userID;
+
+    IF v_lastSemCredits >= 3.0 THEN
+        SET v_maxCreditsAllowed = 19;
+    END IF;
+
+    SELECT IFNULL(SUM(c.credits), 0)
+    INTO v_currentCredits
+    FROM Enroll e
+    JOIN Course c ON e.courseID = c.courseID
+    WHERE e.userID = p_userID;
+
+    SELECT IFNULL(SUM(c2.credits), 0)
+    INTO v_extraCredits
+    FROM ExtraEnroll ee
+    JOIN Course c2 ON ee.courseID = c2.courseID
+    WHERE ee.userID = p_userID
+    AND ee.extraEnrollStatus = '대기';
+
+    SET v_totalCredits = v_currentCredits + v_extraCredits + v_credits;
+    IF v_totalCredits > v_maxCreditsAllowed THEN
+        SET @error_msg = CONCAT(
+            '신청 가능 학점 ', v_maxCreditsAllowed,
+            '을 초과합니다. 현재: ', v_currentCredits,
+            ', 대기: ', v_extraCredits,
+            ', 요청: ', v_credits
+        );
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = @error_msg;
+    END IF;
+
+    -- 시간표 충돌 검사
+    CREATE TEMPORARY TABLE tmp_new_times AS
+    SELECT dayOfWeek, startPeriod, endPeriod,
+           period_to_numeric(startPeriod) AS startNum,
+           period_to_numeric(endPeriod) AS endNum
+    FROM CourseTime
+    WHERE courseID = p_courseID;
+
+    CREATE TEMPORARY TABLE tmp_existing_times AS
+    SELECT ct.dayOfWeek, ct.startPeriod, ct.endPeriod,
+           period_to_numeric(ct.startPeriod) AS startNum,
+           period_to_numeric(ct.endPeriod) AS endNum
+    FROM Enroll e
+    JOIN CourseTime ct ON e.courseID = ct.courseID
+    WHERE e.userID = p_userID
+    UNION ALL
+    SELECT ct2.dayOfWeek, ct2.startPeriod, ct2.endPeriod,
+           period_to_numeric(ct2.startPeriod) AS startNum,
+           period_to_numeric(ct2.endPeriod) AS endNum
+    FROM ExtraEnroll ee
+    JOIN CourseTime ct2 ON ee.courseID = ct2.courseID
+    WHERE ee.userID = p_userID
+    AND ee.extraEnrollStatus = '대기';
+
+    SELECT COUNT(*)
+    INTO v_conflictCount
+    FROM tmp_new_times n
+    JOIN tmp_existing_times e
+    ON n.dayOfWeek = e.dayOfWeek
+    AND NOT (n.endNum <= e.startNum OR n.startNum >= e.endNum);
+
+    DROP TEMPORARY TABLE tmp_new_times;
+    DROP TEMPORARY TABLE tmp_existing_times;
+
+    IF v_conflictCount > 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '시간표가 충돌합니다. 확인 후 다시 시도해주세요.';
+    END IF;
+
+    -- 수강신청 중복 검사
+    SELECT COUNT(*)
+    INTO v_alreadyEnrolled
+    FROM Enroll
+    WHERE userID = p_userID
+    AND courseID = p_courseID;
+    IF v_alreadyEnrolled > 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '이미 수강신청한 과목입니다.';
+    END IF;
+
+    -- 빌넣 요청 중복 검사
+    SELECT COUNT(*)
+    INTO v_alreadyRequested
+    FROM ExtraEnroll
+    WHERE userID = p_userID
+    AND courseID = p_courseID
+    AND extraEnrollStatus = '대기';
+    IF v_alreadyRequested > 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '이미 빌넣요청한 과목입니다.';
+    END IF;
+
+    -- ExtraEnroll 삽입
+    INSERT INTO ExtraEnroll (userID, courseID, reason, extraEnrollStatus)
+    VALUES (p_userID, p_courseID, p_reason, '대기');
+
+    COMMIT;
 END $$
 DELIMITER ;
