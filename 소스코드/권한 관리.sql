@@ -1,3 +1,10 @@
+-- 기존 사용자 삭제: 이미 존재하는 경우 충돌 방지를 위해 제거
+DROP USER IF EXISTS 'admin_user'@'localhost';
+DROP USER IF EXISTS 'professor_user'@'localhost';
+DROP USER IF EXISTS 'student_user'@'localhost';
+DROP USER IF EXISTS 'auth_user'@'localhost';
+
+-- 사용자 생성: 각 PHP 파일에 맞는 계정 설정
 CREATE USER 'admin_user'@'localhost' IDENTIFIED BY 'AdminPass123!';     -- admin.php 용 계정
 CREATE USER 'professor_user'@'localhost' IDENTIFIED BY 'ProfPass123!';  -- professor.php 용 계정
 CREATE USER 'student_user'@'localhost' IDENTIFIED BY 'StudentPass123!'; -- enroll.php, cart.php, extraenroll.php 용 계정
@@ -37,5 +44,5 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON dbproject.User TO 'auth_user'@'localhost
 GRANT SELECT ON dbproject.Department TO 'auth_user'@'localhost';                        -- 회원가입 폼
 GRANT SELECT ON dbproject.College TO 'auth_user'@'localhost';                           -- 회원가입 폼
 
--- 권한 적용
+-- 권한 적용: 변경 사항을 즉시 데이터베이스에 반영
 FLUSH PRIVILEGES;

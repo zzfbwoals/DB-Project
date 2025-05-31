@@ -5,7 +5,7 @@
 
 session_start();
 
-// 관리자 권한 확인
+// 사용자가 로그인되어 있고 관리자인지 확인
 if (!isset($_SESSION["userID"]) || $_SESSION["userRole"] !== 'admin')
 {
     header("Location: login.php");

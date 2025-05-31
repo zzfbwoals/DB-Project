@@ -5,7 +5,7 @@
 
 session_start();
 
-// DB 연결
+// auth_user로 접속
 $conn = new mysqli("localhost", "auth_user", "AuthPass123!", "dbproject");
 if ($conn->connect_error)
 {

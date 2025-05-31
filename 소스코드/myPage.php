@@ -3,16 +3,18 @@
 // 초기 설정
 // ---------------------------------------
 
-$conn = new mysqli("localhost", "auth_user", "AuthPass123!", "dbproject");
-if ($conn->connect_error) {
-    die("DB 연결 실패: " . $conn->connect_error);
-}
-
-// 세션 시작
 session_start();
+
+// 사용자가 로그인되어 있는지 확인
 if (!isset($_SESSION['userID'])) {
     echo "<script>alert('로그인이 필요합니다.'); location.href='login.php';</script>";
     exit();
+}
+
+// auth_user로 접속
+$conn = new mysqli("localhost", "auth_user", "AuthPass123!", "dbproject");
+if ($conn->connect_error) {
+    die("DB 연결 실패: " . $conn->connect_error);
 }
 
 $userID = $_SESSION['userID'];

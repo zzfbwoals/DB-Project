@@ -5,7 +5,7 @@
 
 session_start();
 
-// 교수 권한 확인
+// 사용자가 로그인되어 있고 교수인지 확인
 if (!isset($_SESSION["userID"]) || $_SESSION["userRole"] !== 'professor') {
     header("Location: login.php");
     exit();
