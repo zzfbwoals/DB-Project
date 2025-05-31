@@ -1008,7 +1008,7 @@ if (isset($_GET['perform_search']) && $_GET['perform_search'] == '1')
                                 <td><?= htmlspecialchars($course['credits']) ?></td>
                                 <td><?= htmlspecialchars($timeDisplay) ?></td>
                                 <td>
-                                    <form method="post" action="enroll.php" style="display:inline;" onsubmit="return confirm('이 강의를 수강 취소하시겠습니까?');">
+                                    <form method="post" action="enroll.php" style="display:inline;" onsubmit="return confirm('정말로 이 강의를 취소하시겠습니까?');">
                                         <input type="hidden" name="courseID" value="<?= $course['courseID'] ?>">
                                         <input type="hidden" name="action" value="cancel">
                                         <button type="submit" class="deleteButton">취소</button>

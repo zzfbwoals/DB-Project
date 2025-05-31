@@ -120,7 +120,7 @@ BEGIN
         -- 현재 인원이 정원을 초과하면 에러 발생
         IF currCount >= maxCap THEN
             SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = '정원이 초과되어 수강신청이 불가능합니다. 빌넣요청을 이용해주세요.';
+            SET MESSAGE_TEXT = '정원이 가득 찼습니다. 빌넣 요청을 이용해주세요.';
         END IF;
     END IF;
 END $$
@@ -267,9 +267,9 @@ BEGIN
     SET v_totalAfterEnroll = v_currentCredits + v_newCourseCredits;
     IF v_totalAfterEnroll > v_maxCreditsAllowed THEN
         SET @error_msg = CONCAT(
-            '최대 신청 가능 학점 ', v_maxCreditsAllowed,
-            '을 초과했습니다. 현재: ', v_currentCredits,
-            ', 추가: ', v_newCourseCredits
+            '최대 신청 가능 학점을 초과했습니다. (최대: ', v_maxCreditsAllowed,
+            ' 학점, 현재: ', v_currentCredits,
+            ' 학점, 추가 시도: ', v_newCourseCredits, ' 학점)'
         );
         SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT = @error_msg;
@@ -308,7 +308,7 @@ BEGIN
     -- 충돌 존재 시 에러 발생
     IF v_conflictCount > 0 THEN
         SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = '시간표 충돌로 인해 수강신청이 불가능합니다.';
+        SET MESSAGE_TEXT = '시간표가 충돌합니다. 다른 강의를 선택해주세요.';
     END IF;
 
     -- 모든 검사 통과 시 Enroll 테이블에 레코드 삽입
@@ -382,7 +382,7 @@ BEGIN
     AND courseID = p_courseID;
     IF v_alreadyInCart > 0 THEN
         SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = '이미 장바구니에 담긴 과목입니다.';
+        SET MESSAGE_TEXT = '이미 장바구니에 추가된 과목입니다.';
     END IF;
 
     -- 학점 초과 검사
@@ -414,9 +414,9 @@ BEGIN
     SET v_totalAfterCart = v_currentCredits + v_newCourseCredits;
     IF v_totalAfterCart > v_maxCreditsAllowed THEN
         SET @error_msg = CONCAT(
-            '최대 신청 가능 학점 ', v_maxCreditsAllowed,
-            '을 초과했습니다. 현재: ', v_currentCredits,
-            ', 추가: ', v_newCourseCredits
+            '최대 신청 가능 학점을 초과했습니다. (최대: ', v_maxCreditsAllowed,
+            ' 학점, 현재: ', v_currentCredits,
+            ' 학점, 추가 시도: ', v_newCourseCredits, ' 학점)'
         );
         SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT = @error_msg;
@@ -504,7 +504,7 @@ BEGIN
     DECLARE v_existsCourse INT DEFAULT 0;          -- 과목 존재 여부
     DECLARE v_capacity INT DEFAULT 0;              -- 과목 정원
     DECLARE v_currentEnroll INT DEFAULT 0;         -- 현재 수강 인원
-    DECLARE v_credits INT DEFAULT 0;               -- 요청 과목 학점
+    DECLARE v_newCourseCredits INT DEFAULT 0;               -- 요청 과목 학점
     DECLARE v_courseName VARCHAR(100);             -- 과목명
     DECLARE v_lastSemCredits FLOAT DEFAULT 0;      -- 이전 학기 평점
     DECLARE v_maxCreditsAllowed INT DEFAULT 18;    -- 최대 신청 가능 학점
@@ -527,7 +527,7 @@ BEGIN
 
     -- 정원 및 과목 정보 조회 (동시성 제어를 위해 FOR UPDATE)
     SELECT capacity, currentEnrollment, credits, courseName
-    INTO v_capacity, v_currentEnroll, v_credits, v_courseName
+    INTO v_capacity, v_currentEnroll, v_newCourseCredits, v_courseName
     FROM Course
     WHERE courseID = p_courseID
     FOR UPDATE;
@@ -565,13 +565,12 @@ BEGIN
     AND ee.extraEnrollStatus = '대기';
 
     -- 요청 후 총 학점 계산
-    SET v_totalCredits = v_currentCredits + v_extraCredits + v_credits;
+    SET v_totalCredits = v_currentCredits + v_extraCredits + v_newCourseCredits;
     IF v_totalCredits > v_maxCreditsAllowed THEN
         SET @error_msg = CONCAT(
-            '신청 가능 학점 ', v_maxCreditsAllowed,
-            '을 초과합니다. 현재: ', v_currentCredits,
-            ', 대기: ', v_extraCredits,
-            ', 요청: ', v_credits
+            '최대 신청 가능 학점을 초과했습니다. (최대: ', v_maxCreditsAllowed,
+            ' 학점, 현재: ', v_currentCredits,
+            ' 학점, 추가 시도: ', v_newCourseCredits, ' 학점)'
         );
         SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT = @error_msg;
