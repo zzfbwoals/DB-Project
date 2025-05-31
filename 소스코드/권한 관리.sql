@@ -4,14 +4,18 @@ CREATE USER 'student_user'@'localhost' IDENTIFIED BY 'StudentPass123!'; -- enrol
 CREATE USER 'auth_user'@'localhost' IDENTIFIED BY 'AuthPass123!';       -- login.php, signup.php 용 계정
 
 -- admin_user: 대부분의 테이블에 대해 모든 권한 부여 (User 승인/거절 등)
-GRANT SELECT, INSERT, UPDATE, DELETE ON dbproject.* TO 'admin_user'@'localhost'
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbproject.* TO 'admin_user'@'localhost';
+GRANT EXECUTE ON PROCEDURE dbproject.sp_approve_extra_enroll TO 'admin_user'@'localhost';
+GRANT EXECUTE ON PROCEDURE dbproject.sp_enroll_with_conflict_check TO 'admin_user'@'localhost'; -- 관리자도 테스트 등을 위해 필요할 수 있음
+
 
 -- professor_user: ExtraEnroll, Enroll, Course 관련 권한 부여
 GRANT SELECT, UPDATE ON dbproject.ExtraEnroll TO 'professor_user'@'localhost';  		-- 빌넣요청 승인/거절
-GRANT SELECT, INSERT ON dbproject.Enroll TO 'professor_user'@'localhost';       		-- 수강신청 추가
+GRANT SELECT, INSERT, DELETE ON dbproject.Enroll TO 'professor_user'@'localhost';       		-- 수강신청 추가
 GRANT SELECT, UPDATE, DELETE ON dbproject.Course TO 'professor_user'@'localhost';       -- currentEnrollment 수정
 GRANT INSERT ON dbproject.Course TO 'professor_user'@'localhost';                       -- 강의 추가
 GRANT INSERT ON dbproject.CourseTime TO 'professor_user'@'localhost';                   -- 강의 시간표 추가
+GRANT SELECT, UPDATE, DELETE ON dbproject.CourseTime TO 'professor_user'@'localhost';
 GRANT SELECT ON dbproject.Department TO 'professor_user'@'localhost';                   -- 강의 추가의 학과 조회
 GRANT SELECT ON dbproject.User TO 'professor_user'@'localhost';                 		-- 학생 정보 조회
 
@@ -24,6 +28,7 @@ GRANT SELECT ON dbproject.User TO 'student_user'@'localhost';                   
 GRANT SELECT ON dbproject.CourseTime TO 'student_user'@'localhost';                     -- 시간표 조회
 GRANT SELECT ON dbproject.Department TO 'student_user'@'localhost';                     -- 조인
 GRANT SELECT ON dbproject.College TO 'student_user'@'localhost';                        -- 조인
+GRANT EXECUTE ON PROCEDURE dbproject.sp_enroll_with_conflict_check TO 'student_user'@'localhost'; -- 시간표 충돌 검사 후 수강신청
 
 -- auth_user: 로그인, 회원가입 관련 권한 부여
 GRANT SELECT ON dbproject.User TO 'auth_user'@'localhost';          -- 로그인 및 중복 확인용
