@@ -24,7 +24,8 @@ CREATE TABLE User (
     userID VARCHAR(20) PRIMARY KEY,         -- 학번(아이디)
     userPassword VARCHAR(255) NOT NULL,     -- 비밀번호
     userName VARCHAR(50) NOT NULL,          -- 이름
-    adminApproval ENUM('대기', '승인', '거절') DEFAULT '대기', -- 관리자 승인 상태
+    adminApproval ENUM('대기', '승인', '거절') -- 관리자 승인 상태
+    NOT NULL DEFAULT '대기',
     departmentID INT,                       -- 학과 ID
     grade INT,                              -- 학년
     lastSemesterCredits FLOAT,              -- 지난 학기 성적
@@ -59,7 +60,8 @@ CREATE TABLE Course (
 CREATE TABLE CourseTime (
     courseTimeID INT AUTO_INCREMENT PRIMARY KEY, -- 강의시간표 ID
     courseID VARCHAR(5),                         -- 강의번호
-    dayOfWeek VARCHAR(5),                        -- 요일
+    dayOfWeek ENUM('월','화','수','목','금','토') -- 요일
+    NULL DEFAULT NULL,                            
     startPeriod VARCHAR(5),                      -- 시작시간
     endPeriod VARCHAR(5),                        -- 종료시간
     FOREIGN KEY (courseID) REFERENCES Course(courseID)
@@ -87,7 +89,8 @@ CREATE TABLE ExtraEnroll (
     userID VARCHAR(20),                           -- 학번
     courseID VARCHAR(5),                          -- 강의번호
     reason VARCHAR(100),                          -- 사유
-    extraEnrollStatus VARCHAR(10) DEFAULT '대기', -- 빌넣 요청 상태
+    extraEnrollStatus ENUM('대기','승인','거절')
+    NOT NULL DEFAULT '대기',                      -- 빌넣 요청 상태
     FOREIGN KEY (userID) REFERENCES User(userID)
         ON DELETE CASCADE
         ON UPDATE CASCADE,
