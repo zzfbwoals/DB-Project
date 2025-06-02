@@ -28,7 +28,7 @@ CREATE TABLE User (
     departmentID INT,                       -- 학과 ID
     grade INT,                              -- 학년
     lastSemesterCredits FLOAT,              -- 지난 학기 성적
-    userRole VARCHAR(20) NOT NULL,          -- 역할
+    userRole ENUM('student','professor','admin') NOT NULL,          -- 역할
     FOREIGN KEY (departmentID) REFERENCES Department(departmentID)
         ON DELETE SET NULL
         ON UPDATE CASCADE
