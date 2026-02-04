@@ -1,6 +1,6 @@
 # 수강신청 시스템 + 빌넣 시스템
 
-## 💻 개발 환경
+## 개발 환경
 
 - XAMPP (Apache)
 - PHP
@@ -8,7 +8,7 @@
 - Google Chrome
 - HTML + CSS + JavaScript
 
-## 📁 폴더 구조
+## 폴더 구조
 
 ```bash
 ├── 데이터베이스 테이블 생성.sql
@@ -69,7 +69,8 @@
 * 교수 페이지: [http://localhost/professor.php](http://localhost/professor.php) (세션 관리로 인해 URL로 이동 불가)
 * 관리자 페이지: [http://localhost/admin.php](http://localhost/admin.php) (세션 관리로 인해 URL로 이동 불가)
 
-## 🧪 테스트 방법
+
+## 테스트 방법
 
 * 로그인 기능: login.php 접속 후 `3.사용자 계정 정보`에 나온 계정으로 로그인
 * 회원가입 기능: signup.php 접속 후 회원가입 진행 → `3.사용자 계정 정보`에 관리자 아이디로 로그인 후 회원가입 승인/거절
@@ -84,5 +85,16 @@
 
   → `3.사용자 계정 정보`에 학생 아이디로 로그인 → `enroll.php`로 이동 → 좌측 메뉴의 빌넣요청 클릭 → 검색어에 `DB프로그래밍` 검색 후 빌넣요청
 * 빌넣 승인 기능: signup.php 접속 후 회원가입 진행 → `3.사용자 계정 정보`에 교수 아이디로 로그인 후 빌넣요청 승인/거절
+
+
+## 대표 인터페이스
+
+### 1. 로그인 페이지
+<img width="502" height="667" alt="image" src="https://github.com/user-attachments/assets/50ede559-7b23-4433-b5bd-b38f413325b1" />
+
+### 2. 메인 수강신청 페이지
+<img width="1094" height="515" alt="545030051-e4ee65d6-0eda-4a7d-a643-fafc00fc99b4" src="https://github.com/user-attachments/assets/98876432-c6cb-47f2-9b6c-b60654456cc7" />
+
+
 
 ---
